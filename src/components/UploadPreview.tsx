@@ -459,8 +459,11 @@ function Row({ item, state }: { item: MediaFile; state?: ItemState }) {
           {item.takenAt ? (
             <>
               {item.takenAt.toLocaleDateString("es")}
+              {item.dateSource === "name" && (
+                <span className="t-label ml-2 text-ink-soft">del nombre</span>
+              )}
               {item.dateSource === "file" && (
-                <span className="t-label ml-2 text-ink-soft">del fichero</span>
+                <span className="t-label ml-2 text-accent">del fichero</span>
               )}
             </>
           ) : (

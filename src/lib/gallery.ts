@@ -5,6 +5,7 @@ import {
   type DriveFile,
   type TokenSource,
 } from "@/lib/google/drive";
+import { dateFromName, type Provenance } from "@/lib/media";
 import { memo } from "@/lib/memo";
 import { spanFromProperties, type DateSpan } from "@/lib/trips";
 
@@ -23,6 +24,8 @@ export type Shot = {
   /** Our own 400px copy, when the upload managed to make one. */
   thumbId?: string;
   takenAt: Date | null;
+  /** How much the date can be trusted — see `pickDate`. */
+  dateSource: Provenance;
   lat: number | null;
   lng: number | null;
   geoSource: string;
@@ -38,10 +41,38 @@ export type Trip = {
   shots: Shot[];
 };
 
+/**
+ * The date to sort a photo by, and how much it can be trusted.
+ *
+ * Reading the name here as well as at upload time is what repairs an album
+ * that is already in Drive. Photos uploaded before the name was consulted
+ * carry `dateSource: "file"` — the day the file was written, which for
+ * anything forwarded is not the day it was taken, and is what leaves a trip
+ * shuffled. The name still says otherwise, and re-reading it costs nothing
+ * and touches nothing.
+ *
+ * An EXIF date is never second-guessed: it is the camera's own answer.
+ */
+function dateOf(
+  file: DriveFile,
+  properties: Record<string, string>,
+): { takenAt: Date | null; dateSource: Provenance } {
+  const stored = properties.takenAt ? new Date(properties.takenAt) : null;
+  const usable = stored && Number.isFinite(stored.getTime()) ? stored : null;
+  const source = (properties.dateSource ?? "none") as Provenance;
+
+  if (source === "exif" && usable) return { takenAt: usable, dateSource: source };
+
+  const named = dateFromName(file.name);
+  if (named) return { takenAt: named, dateSource: "name" };
+
+  return { takenAt: usable, dateSource: usable ? source : "none" };
+}
+
 function toShot(file: DriveFile): Shot {
   const properties = file.appProperties ?? {};
 
-  const takenAt = properties.takenAt ? new Date(properties.takenAt) : null;
+  const { takenAt, dateSource } = dateOf(file, properties);
   const lat = Number(properties.lat);
   const lng = Number(properties.lng);
 
@@ -51,7 +82,8 @@ function toShot(file: DriveFile): Shot {
     mimeType: file.mimeType,
     thumbnailLink: file.thumbnailLink,
     thumbId: properties.thumbId,
-    takenAt: takenAt && Number.isFinite(takenAt.getTime()) ? takenAt : null,
+    takenAt,
+    dateSource,
     lat: Number.isFinite(lat) ? lat : null,
     lng: Number.isFinite(lng) ? lng : null,
     geoSource: properties.geoSource ?? "none",
@@ -145,6 +177,18 @@ export function byTripDate(a: Trip, b: Trip): number {
   return at - bt || a.name.localeCompare(b.name);
 }
 
+/**
+ * The tie-break, and the reason a burst of photos used to come out shuffled.
+ *
+ * Plain `localeCompare` is alphabetical, so `IMG_10` sorts before `IMG_2`.
+ * Whenever the dates match — a burst, a second's precision, or a whole folder
+ * copied at once so every file carries the same mtime — that ordering is the
+ * only one left, and it reads as random.
+ */
+function byName(a: Shot, b: Shot): number {
+  return a.name.localeCompare(b.name, undefined, { numeric: true });
+}
+
 /** Oldest photo first, so a trip reads forwards. */
 export function byDateThenName(a: Shot, b: Shot): number {
   const at = a.takenAt?.getTime();
@@ -152,11 +196,11 @@ export function byDateThenName(a: Shot, b: Shot): number {
 
   // Photos without a date go last rather than being scattered by whatever
   // order Drive happened to return.
-  if (at === undefined && bt === undefined) return a.name.localeCompare(b.name);
+  if (at === undefined && bt === undefined) return byName(a, b);
   if (at === undefined) return 1;
   if (bt === undefined) return -1;
 
-  return at - bt || a.name.localeCompare(b.name);
+  return at - bt || byName(a, b);
 }
 
 export function isVideo(shot: Shot): boolean {

@@ -16,6 +16,7 @@ const shot = (name: string, takenAt: Date | null): Shot => ({
   name,
   mimeType: "image/jpeg",
   takenAt,
+  dateSource: takenAt ? "exif" : "none",
   lat: null,
   lng: null,
   geoSource: "tag",
@@ -96,4 +97,23 @@ test("two photos taken in the same second keep a stable order", () => {
   const shots = [shot("IMG_2.jpg", same), shot("IMG_1.jpg", same)];
 
   assert.deepEqual(order(shots, byDateThenName), ["IMG_1.jpg", "IMG_2.jpg"]);
+});
+
+test("photos sharing a date fall back to a human reading of the number", () => {
+  // A burst, or a folder copied in one go so every file has the same mtime.
+  // Alphabetical order puts IMG_10 before IMG_2, which reads as shuffled.
+  const same = on(2025, 9, 29);
+  const shots = [
+    shot("IMG_10.jpg", same),
+    shot("IMG_2.jpg", same),
+    shot("IMG_1.jpg", same),
+    shot("IMG_20.jpg", same),
+  ];
+
+  assert.deepEqual(order(shots, byDateThenName), [
+    "IMG_1.jpg",
+    "IMG_2.jpg",
+    "IMG_10.jpg",
+    "IMG_20.jpg",
+  ]);
 });
