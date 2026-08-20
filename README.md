@@ -1,12 +1,10 @@
 # Tesseralbum
 
 Álbum de viajes que se abre acercando el móvil a un souvenir. Cada pegatina
-NFC lleva una URL con un código; escanearla abre el álbum de ese lugar y,
-más adelante, permitirá subir fotos directamente a Google Drive.
+NFC lleva una URL; escanearla abre el lugar al que pertenece, y desde ahí subes
+las fotos, que se organizan solas en tu Google Drive por sus propias fechas.
 
-**Fase 1 — escaneo y lugares.** Conexión con Drive, catálogo de pegatinas y la
-ruta `/t/[slug]` resolviendo a un lugar. Las subidas, la galería, el mapa y el
-vídeo llegan en fases posteriores.
+En producción: **https://tesseralbum.vercel.app**
 
 > El código, los comentarios y los identificadores están en inglés. El texto
 > que ve el usuario está en español.
@@ -22,19 +20,18 @@ Navegador ──token GIS──► Google Drive API
     │
     ├─ Tesseralbum/souvenirs.json          el catálogo: pegatina → lugar
     └─ Tesseralbum/Irlanda/2025/Septiembre-Octubre/
-                                           las fotos, en carpetas que
-                                           salen de sus propias fechas
+                                           las fotos, en carpetas que salen
+                                           de sus propias fechas, más un
+                                           notas.md con el diario del viaje
 ```
 
 Consecuencias que conviene tener claras:
 
-- **Ningún secreto en ningún sitio.** El token de Google vive una hora en
-  memoria y se renueva en silencio. No hay refresh token que cifrar ni rotar.
-  La única variable de configuración es el client ID, que es público por
-  diseño.
+- **Ningún secreto en ningún sitio.** La única variable de configuración es el
+  client ID de Google, que es público por diseño. No hay refresh token que
+  cifrar ni rotar, porque el flujo de navegador no emite ninguno.
 - **El control de acceso es el de Drive.** Compartes la carpeta con quien
-  quieras desde la interfaz de Drive, revocable por persona. La app solo
-  muestra lo que Drive le deje ver a quien esté dentro.
+  quieras desde la interfaz de Drive, revocable por persona.
 - **Scope `drive.file`.** La app solo ve los ficheros que ella misma crea. El
   resto de tu Drive le es invisible, y Google no exige la revisión de
   seguridad de los scopes amplios.
@@ -56,10 +53,23 @@ no partirlo en dos: `2025/Diciembre-Enero`.
 
 Subir el resto de un viaje días después **no crea otra carpeta**: si el lote
 nuevo cae a menos de 14 días del que ya está, se considera el mismo viaje y la
-carpeta se amplía. Más lejos, es una visita nueva y le toca carpeta propia.
+carpeta se amplía, renombrándose si hace falta. Más lejos, es una visita nueva
+y le toca carpeta propia. Dos viajes distintos en el mismo mes se distinguen
+con un sufijo: `Septiembre` y `Septiembre (2)`.
 
 De ahí que una pegatina no necesite nombre: **volver al mismo sitio lo
 distinguen las fechas, no una etiqueta.**
+
+## Qué hay
+
+| Ruta | Qué hace |
+|---|---|
+| `/` | Tus lugares, y el alta de pegatinas nuevas |
+| `/t/[slug]` | Aterrizaje del NFC: el lugar, y subir fotos |
+| `/place/[id]` | El álbum: viajes, fotos y el diario de cada uno |
+| `/map` | Mapa de lugares, con vista previa al pulsar |
+| `/passport` | Países, ciudades, viajes, días fuera y gráfico por año |
+| `/admin` | URLs de las pegatinas, borrado, cuota y caché |
 
 ## Puesta en marcha
 
@@ -69,8 +79,9 @@ distinguen las fechas, no una etiqueta.**
    El nombre que le pongas es el que verás en la pantalla de permisos.
 2. **APIs y servicios › Biblioteca › Google Drive API › Habilitar.**
 3. **Credenciales › Crear credenciales › ID de cliente de OAuth › Aplicación web.**
-   Como *origen autorizado de JavaScript* pon `http://localhost:3000`, y añade
-   la URL de Vercel cuando despliegues. **No necesitas el client secret.**
+   En *orígenes autorizados de JavaScript* pon **los dos**:
+   `http://localhost:3000` y la URL de tu despliegue.
+   **No necesitas el client secret.**
 4. **Pantalla de consentimiento › Público › Publicar app.**
 
 El paso 4 importa: en modo «Prueba» solo entran las cuentas que apuntes una a
@@ -79,6 +90,9 @@ que pide la app es `drive.file`, que Google clasifica como **no sensible**,
 publicar no exige verificación — y de paso quita el aviso de «app no
 verificada».
 
+Si ves `400 origin_mismatch`, es que falta ese origen exacto en el paso 3.
+Ojo: `127.0.0.1` y `localhost` son orígenes distintos para Google.
+
 ### 2. Variables
 
 ```bash
@@ -86,6 +100,9 @@ cp .env.example .env.local
 ```
 
 Pega el client ID en `NEXT_PUBLIC_GOOGLE_CLIENT_ID`. Es la única que hay.
+
+Si la cambias, **reinicia `npm run dev`**: las `NEXT_PUBLIC_*` se inyectan al
+compilar, y un servidor que arrancó sin ella no la recoge.
 
 ### 3. Arranca
 
@@ -98,21 +115,15 @@ Pulsa **Conectar con Google** y acepta el permiso. La app crea la carpeta
 
 ### 4. Crea la primera pegatina
 
-Ve a **Pegatinas** (`/admin`) y escribe la ciudad en el buscador. Ciudad, país,
-código ISO y coordenadas los rellena Nominatim. Al guardar te da la URL para
-grabar en el chip.
+En la portada, escribe la ciudad en el buscador y elígela de la lista: ciudad,
+país, código ISO y coordenadas los rellena Nominatim. Al guardar te da la URL
+para grabar en el chip.
 
 No hay nada más que rellenar: una pegatina es un lugar y nada más.
 
-Si el lugar no aparece en el buscador, hay un enlace para introducirlo a mano.
+### 5. Graba el chip
 
-### 5. Prueba el escaneo
-
-Abre esa URL. Debe mostrar el souvenir y la ciudad. **Ese es el criterio de
-aceptación de la fase 1.**
-
-Para probarlo desde el móvil, graba la pegatina con un registro NDEF de tipo
-URI sustituyendo `localhost` por la IP que imprime `npm run dev` en «Network».
+Un registro NDEF de tipo URI con esa URL. Cabe de sobra en un NTAG213.
 
 ## Comandos
 
@@ -120,7 +131,7 @@ URI sustituyendo `localhost` por la IP que imprime `npm run dev` en «Network».
 |---|---|
 | `npm run dev` | Servidor de desarrollo |
 | `npm run build` | Build de producción |
-| `npm test` | Tests del catálogo, las carpetas de viaje y la geocodificación |
+| `npm test` | 110 tests de la lógica pura |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 
@@ -129,48 +140,59 @@ URI sustituyendo `localhost` por la IP que imprime `npm run dev` en «Network».
 ```
 src/
   app/
-    page.tsx                 índice de lugares
-    t/[slug]/page.tsx        aterrizaje del NFC
-    place/[id]/page.tsx      álbum de un lugar
-    admin/page.tsx           alta de pegatinas
+    page.tsx                 lugares + alta de pegatinas
+    t/[slug]/page.tsx        aterrizaje del NFC y subida
+    place/[id]/page.tsx      el álbum de un lugar
+    map/page.tsx             mapa de lugares
+    passport/page.tsx        estadísticas de viaje
+    admin/page.tsx           pegatinas, cuota y caché
   components/
-    SessionProvider.tsx      token de Drive y catálogo en contexto
-    Shell.tsx                cabecera, y la puerta de «conecta tu Drive»
-    SetupNeeded.tsx          pantalla de primer arranque
-    PlaceSearch.tsx          buscador de ciudades con debounce
+    SessionProvider.tsx      token, catálogo y persistencia de sesión
+    UploadPreview.tsx        elegir, revisar y subir
+    Gallery.tsx              viajes y fotos de un lugar
+    DriveImage.tsx           caché → thumbnailLink → descarga
+    MapView.tsx              Leaflet, cargado bajo demanda
+    TripNotes.tsx            el diario, con guardado automático
   lib/
-    google/gis.ts            token de Google, sin nada persistido  ← tests
-    google/drive.ts          cliente REST de Drive                 ← tests
-    catalog.ts               souvenirs.json: lugares y pegatinas    ← tests
-    trips.ts                 fechas → carpeta del viaje             ← tests
-    geocode.ts               búsqueda en Nominatim                  ← tests
-    env.ts                   el único client ID
+    catalog.ts               souvenirs.json                    ← tests
+    trips.ts                 fechas → carpeta del viaje        ← tests
+    media.ts                 EXIF, hash y clasificación        ← tests
+    limits.ts                topes de tamaño y cuota           ← tests
+    passport.ts              estadísticas de viaje             ← tests
+    map.ts                   pines y solapamientos             ← tests
+    geocode.ts               búsqueda en Nominatim             ← tests
+    session-store.ts         token y catálogo persistidos      ← tests
+    google/drive.ts          cliente REST de Drive             ← tests
+    google/gis.ts            token de Google
+    upload.ts                orquestación de la subida
+    gallery.ts               lectura del álbum
+    cache.ts                 miniaturas en IndexedDB
+    notes.ts                 notas.md por viaje
 docs/
-  postgres-index-phase5.sql  esquema guardado para cuando el mapa pese
+  postgres-index-phase5.sql  esquema guardado por si el mapa pesa
 ```
 
 ## Estado de verificación
 
-Comprobado automáticamente: 31 tests, typecheck, lint, build, y las cuatro
-rutas respondiendo tanto sin configurar como con client ID puesto.
+Comprobado automáticamente en cada cambio: **110 tests**, typecheck, lint y
+build.
 
-Comprobado a mano contra Google: **el consentimiento, la creación de la carpeta
-y la escritura de `souvenirs.json` funcionan.** La búsqueda de lugares se
-verificó contra la API real de Nominatim con cuatro casos, incluido uno sin
-campo de ciudad (Machu Picchu).
-
-Sin comprobar: la subida de ficheros, que todavía no existe (fase 2).
+Comprobado a mano contra Google: consentimiento, creación de carpetas,
+escritura del catálogo, subida de fotos y lectura de fechas EXIF.
 
 ## Notas
 
 - Next.js 16: `params` es asíncrono y se lee con `use()` en componentes de
-  cliente. El antiguo `middleware.ts` ya no existe aquí — no hay nada que
-  refrescar en el servidor.
+  cliente. No hay `middleware.ts` — no hay nada que refrescar en el servidor.
 - Si renombras rutas, borra `.next/` antes de `tsc`: los tipos generados
   siguen apuntando a las carpetas viejas.
 - `ensurePath` no es atómico. Dos pestañas creando la misma carpeta a la vez
   pueden producir un duplicado, porque Drive permite nombres repetidos.
+- El token de Google dura una hora. La app lo guarda y lo renueva en silencio
+  mientras haya sesión de Google en el navegador; un mes sin interacción
+  requeriría un refresh token, que este flujo no emite.
 - Las pegatinas sobre souvenirs metálicos necesitan chips *on-metal* con capa
   de ferrita. Las normales no funcionan pegadas a metal.
 - En el iPhone, *Ajustes › Cámara › Formatos › Más compatible*: cambia HEIC por
-  JPEG y HEVC por H.264. Sin eso, la fase 2 necesitaría un transcodificador.
+  JPEG y HEVC por H.264. Sin eso las fotos suben bien pero el navegador no
+  puede mostrarlas.
