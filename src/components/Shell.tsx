@@ -34,7 +34,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   href="/admin"
                   className="t-label text-ink-soft hover:text-accent hover:underline"
                 >
-                  Pegatinas
+                  Lugares
                 </Link>
                 <button
                   type="button"
@@ -53,7 +53,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       <footer className="mx-auto w-full max-w-3xl px-6 pb-10">
         <p className="t-label border-t border-rule pt-4 text-ink-soft">
-          Fase 1 · escaneo y lugares
+          Tus fotos viven en tu Drive
         </p>
       </footer>
     </>

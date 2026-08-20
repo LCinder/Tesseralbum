@@ -40,14 +40,14 @@ function Scanned({ slug }: { slug: string }) {
   if (!found) {
     return (
       <>
-        <p className="t-label mb-3 text-accent">Pegatina no reconocida</p>
+        <p className="t-label mb-3 text-accent">Lugar no reconocido</p>
         <h1 className="t-display mb-4 text-4xl font-bold leading-none">
           Este souvenir no está en tu catálogo
         </h1>
         <p className="mb-6 max-w-lg text-lg text-ink-soft">
           El chip ha respondido, pero su código no aparece en{" "}
           <code className="font-mono text-base">souvenirs.json</code>. O es de
-          otro Drive, o la pegatina se dio de baja.
+          otro Drive, o el lugar se dio de baja.
         </p>
         <p>
           <Link href="/admin" className="text-accent underline">
@@ -79,7 +79,7 @@ function Scanned({ slug }: { slug: string }) {
 
       {siblings.length > 0 && (
         <>
-          <SectionLabel>Otros souvenirs de {place.city}</SectionLabel>
+          <SectionLabel>Otros chips de {place.city}</SectionLabel>
           <ul className="border-t border-rule">
             {siblings.map((other) => (
               <li

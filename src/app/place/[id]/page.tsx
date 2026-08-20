@@ -38,7 +38,7 @@ function Album({ id }: { id: string }) {
           Este lugar no está en tu catálogo
         </h1>
         <p className="mb-6 max-w-lg text-lg text-ink-soft">
-          Puede que el enlace sea de otro Drive, o que la pegatina se diera de
+          Puede que el enlace sea de otro Drive, o que el lugar se diera de
           baja.
         </p>
         <p>

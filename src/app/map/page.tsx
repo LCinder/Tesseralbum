@@ -44,7 +44,7 @@ function Atlas() {
         <p className="max-w-lg text-lg text-ink-soft">
           Todavía no hay ningún lugar.{" "}
           <Link href="/" className="text-accent underline">
-            Da de alta tu primera pegatina
+            Da de alta tu primer lugar
           </Link>{" "}
           y aparecerá aquí.
         </p>

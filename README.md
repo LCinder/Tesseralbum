@@ -1,8 +1,8 @@
 # Tesseralbum
 
-Álbum de viajes que se abre acercando el móvil a un souvenir. Cada pegatina
-NFC lleva una URL; escanearla abre el lugar al que pertenece, y desde ahí subes
-las fotos, que se organizan solas en tu Google Drive por sus propias fechas.
+Álbum de viajes que se abre acercando el móvil a un souvenir. Cada lugar tiene
+una URL que grabas en un chip NFC; al escanearlo se abre ese lugar, y desde ahí
+subes las fotos, que se organizan solas en tu Google Drive por sus fechas.
 
 En producción: **https://tesseralbum.vercel.app**
 
@@ -18,7 +18,7 @@ propio Drive.
 ```
 Navegador ──token GIS──► Google Drive API
     │
-    ├─ Tesseralbum/souvenirs.json          el catálogo: pegatina → lugar
+    ├─ Tesseralbum/souvenirs.json          el catálogo de lugares
     └─ Tesseralbum/Irlanda/2025/Septiembre-Octubre/
                                            las fotos, en carpetas que salen
                                            de sus propias fechas, más un
@@ -35,7 +35,7 @@ Consecuencias que conviene tener claras:
 - **Scope `drive.file`.** La app solo ve los ficheros que ella misma crea. El
   resto de tu Drive le es invisible, y Google no exige la revisión de
   seguridad de los scopes amplios.
-- **La pegatina NFC no es una credencial**, es un atajo. Dice *qué* álbum
+- **El chip NFC no es una credencial**, es un atajo. Dice *qué* álbum
   abrir; quién puede verlo lo decide Drive.
 
 ## Cómo se organizan las fotos
@@ -57,19 +57,19 @@ carpeta se amplía, renombrándose si hace falta. Más lejos, es una visita nuev
 y le toca carpeta propia. Dos viajes distintos en el mismo mes se distinguen
 con un sufijo: `Septiembre` y `Septiembre (2)`.
 
-De ahí que una pegatina no necesite nombre: **volver al mismo sitio lo
-distinguen las fechas, no una etiqueta.**
+De ahí que un lugar no necesite más nombre que su ciudad: **volver al mismo
+sitio lo distinguen las fechas, no una etiqueta.**
 
 ## Qué hay
 
 | Ruta | Qué hace |
 |---|---|
-| `/` | Tus lugares, y el alta de pegatinas nuevas |
+| `/` | Tus lugares, y el alta de lugares nuevos |
 | `/t/[slug]` | Aterrizaje del NFC: el lugar, y subir fotos |
 | `/place/[id]` | El álbum: viajes, fotos y el diario de cada uno |
 | `/map` | Mapa de lugares, con vista previa al pulsar |
 | `/passport` | Países, ciudades, viajes, días fuera y gráfico por año |
-| `/admin` | URLs de las pegatinas, borrado, cuota y caché |
+| `/admin` | URLs de los lugares, borrado, cuota y caché |
 
 ## Puesta en marcha
 
@@ -113,13 +113,13 @@ npm run dev
 Pulsa **Conectar con Google** y acepta el permiso. La app crea la carpeta
 `Tesseralbum` en tu Drive.
 
-### 4. Crea la primera pegatina
+### 4. Crea el primer lugar
 
 En la portada, escribe la ciudad en el buscador y elígela de la lista: ciudad,
 país, código ISO y coordenadas los rellena Nominatim. Al guardar te da la URL
 para grabar en el chip.
 
-No hay nada más que rellenar: una pegatina es un lugar y nada más.
+No hay nada más que rellenar: un lugar es una ciudad y nada más.
 
 ### 5. Graba el chip
 
@@ -140,12 +140,12 @@ Un registro NDEF de tipo URI con esa URL. Cabe de sobra en un NTAG213.
 ```
 src/
   app/
-    page.tsx                 lugares + alta de pegatinas
+    page.tsx                 lugares + alta de lugares nuevos
     t/[slug]/page.tsx        aterrizaje del NFC y subida
     place/[id]/page.tsx      el álbum de un lugar
     map/page.tsx             mapa de lugares
     passport/page.tsx        estadísticas de viaje
-    admin/page.tsx           pegatinas, cuota y caché
+    admin/page.tsx           lugares, cuota y caché
   components/
     SessionProvider.tsx      token, catálogo y persistencia de sesión
     UploadPreview.tsx        elegir, revisar y subir
@@ -191,7 +191,7 @@ escritura del catálogo, subida de fotos y lectura de fechas EXIF.
 - El token de Google dura una hora. La app lo guarda y lo renueva en silencio
   mientras haya sesión de Google en el navegador; un mes sin interacción
   requeriría un refresh token, que este flujo no emite.
-- Las pegatinas sobre souvenirs metálicos necesitan chips *on-metal* con capa
+- Los chips sobre souvenirs metálicos tienen que ser *on-metal*, con capa
   de ferrita. Las normales no funcionan pegadas a metal.
 - En el iPhone, *Ajustes › Cámara › Formatos › Más compatible*: cambia HEIC por
   JPEG y HEVC por H.264. Sin eso las fotos suben bien pero el navegador no

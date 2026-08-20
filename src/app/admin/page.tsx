@@ -38,7 +38,7 @@ function Registry() {
     return (
       <>
         <h1 className="t-display mb-3 text-4xl font-bold leading-none sm:text-5xl">
-          Pegatinas
+          Lugares
         </h1>
         <p className="mb-6 max-w-lg text-lg text-ink-soft">
           Todavía no hay ninguna.
@@ -55,7 +55,7 @@ function Registry() {
   return (
     <>
       <h1 className="t-display mb-3 text-4xl font-bold leading-none sm:text-5xl">
-        Pegatinas
+        Lugares
       </h1>
       <p className="mb-10 max-w-lg text-lg text-ink-soft">
         La URL de cada una es lo que va grabado en su chip. Para crear una
@@ -167,14 +167,14 @@ function Row({
       {confirming && (
         <div className="mt-3 border-l-[3px] border-accent bg-accent-bg px-4 py-3">
           <p className="mb-3 text-[0.95rem]">
-            Se borra la pegatina del catálogo. Si{" "}
+            Se borra el lugar del catálogo. Si{" "}
             <strong>{place?.country ?? "su país"}</strong> se queda sin ninguna
             y su carpeta está vacía, la carpeta va a la papelera de Drive.{" "}
             <strong>Si tiene fotos, no se toca.</strong>
           </p>
           <p className="mb-3 text-[0.9rem] text-ink-soft">
             El chip que lleve esta URL dejará de resolver. Puedes reaprovecharlo
-            dando de alta otra pegatina y regrabándolo.
+            dando de alta otro lugar y regrabándolo.
           </p>
           <div className="flex items-baseline gap-4">
             <button
@@ -209,12 +209,12 @@ function Row({
 function describeOutcome(folder: FolderOutcome): string {
   switch (folder.kind) {
     case "trashed":
-      return `Pegatina borrada. La carpeta ${folder.country} estaba vacía y ha ido a la papelera de Drive, de donde puedes recuperarla durante 30 días.`;
+      return `Lugar borrado. La carpeta ${folder.country} estaba vacía y ha ido a la papelera de Drive, de donde puedes recuperarla durante 30 días.`;
     case "kept-not-empty":
-      return `Pegatina borrada. La carpeta ${folder.country} tiene contenido, así que la he dejado intacta — bórrala tú desde Drive si quieres.`;
+      return `Lugar borrado. La carpeta ${folder.country} tiene contenido, así que la he dejado intacta — bórrala tú desde Drive si quieres.`;
     case "kept-still-used":
-      return `Pegatina borrada. La carpeta ${folder.country} sigue en uso por otro lugar, así que no se toca.`;
+      return `Lugar borrado. La carpeta ${folder.country} sigue en uso por otro lugar, así que no se toca.`;
     case "none":
-      return "Pegatina borrada. No había ninguna carpeta que retirar.";
+      return "Lugar borrado. No había ninguna carpeta que retirar.";
   }
 }

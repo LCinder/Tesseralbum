@@ -276,7 +276,7 @@ export async function removeSouvenir(
   slug: string,
 ): Promise<{ handle: CatalogHandle; folder: FolderOutcome }> {
   const result = withoutSouvenir(handle.catalog, slug);
-  if (!result) throw new Error("Esa pegatina ya no está en el catálogo.");
+  if (!result) throw new Error("Ese lugar ya no está en el catálogo.");
 
   const { catalog, place, countryStillUsed } = result;
 

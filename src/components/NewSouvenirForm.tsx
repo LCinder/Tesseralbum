@@ -116,7 +116,7 @@ export function NewSouvenirForm() {
     <>
       {created && <JustCreated souvenir={created} />}
 
-      <SectionLabel>Nueva pegatina</SectionLabel>
+      <SectionLabel>Nuevo lugar</SectionLabel>
 
       <form onSubmit={submit} className="mb-12 flex flex-col gap-4">
         {byHand ? (
