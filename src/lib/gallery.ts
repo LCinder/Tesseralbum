@@ -60,7 +60,7 @@ function toShot(file: DriveFile): Shot {
 }
 
 /**
- * Every trip that has photos for this place, newest first.
+ * Every trip that has photos for this place, oldest first.
  *
  * Two queries, run at once, rather than a walk down country → year → trip →
  * files. That walk was strictly sequential — each level needed the ids from
@@ -120,19 +120,33 @@ export async function listTrips(
     });
   }
 
-  // Newest trip first. Within a year, the span decides; folders without one
-  // fall back to their name so the order is at least stable.
-  return trips.sort((a, b) => {
-    const byYear = b.year.localeCompare(a.year);
-    if (byYear !== 0) return byYear;
-
-    const at = a.span?.from.getTime() ?? 0;
-    const bt = b.span?.from.getTime() ?? 0;
-    return bt - at || a.name.localeCompare(b.name);
-  });
+  return trips.sort(byTripDate);
 }
 
-function byDateThenName(a: Shot, b: Shot): number {
+/**
+ * Trips run oldest first, like the pages of an album rather than a feed.
+ *
+ * Within a year the span decides; folders without one fall back to their name
+ * so the order is at least stable. Anything the app cannot date — a folder
+ * made by hand in Drive, a year folder that has since been moved — trails the
+ * dated trips instead of being scattered among them.
+ */
+export function byTripDate(a: Trip, b: Trip): number {
+  if (a.year !== b.year) {
+    if (!a.year) return 1;
+    if (!b.year) return -1;
+    return a.year.localeCompare(b.year);
+  }
+
+  const at = a.span?.from.getTime() ?? Number.POSITIVE_INFINITY;
+  const bt = b.span?.from.getTime() ?? Number.POSITIVE_INFINITY;
+
+  // Two undated folders subtract to NaN, which is falsy, so the name decides.
+  return at - bt || a.name.localeCompare(b.name);
+}
+
+/** Oldest photo first, so a trip reads forwards. */
+export function byDateThenName(a: Shot, b: Shot): number {
   const at = a.takenAt?.getTime();
   const bt = b.takenAt?.getTime();
 
