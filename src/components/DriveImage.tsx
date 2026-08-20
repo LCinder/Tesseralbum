@@ -12,25 +12,28 @@ import { downloadBlob } from "@/lib/google/drive";
  * Shows a private Drive image, with three paths in order of cost.
  *
  * 1. IndexedDB, if this file was fetched before. Free and instant.
- * 2. Google's `thumbnailLink`. A few kilobytes — but served from another host,
- *    expiring after hours, and whether an `<img>` may load it is Google's call.
- * 3. The Drive API with our bearer token. Always works, at the price of the
- *    whole file, which is why it is last.
+ * 2. Our own 400 px copy, made at upload time. A few tens of kilobytes over an
+ *    API we control, so it neither expires nor depends on another host.
+ * 3. Google's `thumbnailLink`, for anything uploaded before we made our own.
+ * 4. The Drive API on the original. Always works, at the price of the whole
+ *    file, which is why it is last.
  *
  * Whatever ends up on screen from paths 2 and 3 is written back to the cache,
  * so the second visit to an album costs nothing.
  */
 
-type Stage = "checking" | "thumb" | "downloading" | "blob" | "failed";
+type Stage = "checking" | "own" | "google" | "downloading" | "blob" | "failed";
 
 export function DriveImage({
   fileId,
   thumbnailLink,
+  thumbId,
   alt,
   className,
 }: {
   fileId: string;
   thumbnailLink?: string;
+  thumbId?: string;
   alt: string;
   className?: string;
 }) {
@@ -67,22 +70,27 @@ export function DriveImage({
       if (cancelled) return;
 
       if (cached) show(cached);
-      else setStage(thumbnailLink ? "thumb" : "downloading");
+      else if (thumbId) setStage("own");
+      else if (thumbnailLink) setStage("google");
+      else setStage("downloading");
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [stage, fileId, thumbnailLink]);
+  }, [stage, fileId, thumbId, thumbnailLink]);
 
+  // Our own thumbnail, then the original as a last resort. Both are downloads
+  // through the Drive API, so they share one effect.
   useEffect(() => {
-    if (stage !== "downloading") return;
+    if (stage !== "own" && stage !== "downloading") return;
 
+    const target = stage === "own" ? (thumbId as string) : fileId;
     const controller = new AbortController();
 
     (async () => {
       try {
-        const blob = await downloadBlob(getToken, fileId, {
+        const blob = await downloadBlob(getToken, target, {
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -91,12 +99,16 @@ export function DriveImage({
         // Best effort: a failed write costs a re-download, not an error.
         void writeThumb(fileId, blob);
       } catch {
-        if (!controller.signal.aborted) setStage("failed");
+        if (controller.signal.aborted) return;
+        // A thumbnail that has gone missing — deleted from Drive by hand —
+        // must not lose the photo; fall through to whatever is left.
+        if (stage !== "own") setStage("failed");
+        else setStage(thumbnailLink ? "google" : "downloading");
       }
     })();
 
     return () => controller.abort();
-  }, [stage, fileId, getToken]);
+  }, [stage, fileId, thumbId, thumbnailLink, getToken]);
 
   if (stage === "failed") {
     return (
@@ -110,7 +122,7 @@ export function DriveImage({
     );
   }
 
-  if (stage === "checking" || stage === "downloading") {
+  if (stage === "checking" || stage === "own" || stage === "downloading") {
     return (
       <div
         className={`animate-pulse bg-surface-2 ${className ?? ""}`}
@@ -127,12 +139,12 @@ export function DriveImage({
       decoding="async"
       // Falling through to the authenticated download is the whole point: an
       // expired or refused thumbnail link must not leave a broken image.
-      onError={() => setStage(stage === "thumb" ? "downloading" : "failed")}
+      onError={() => setStage(stage === "google" ? "downloading" : "failed")}
       // A thumbnail that loaded is worth keeping; caching it here is what makes
       // the next visit instant. It is fetched again as a blob because an <img>
       // does not hand over its bytes — cheap, since the browser has it cached.
       onLoad={() => {
-        if (stage !== "thumb") return;
+        if (stage !== "google") return;
         const link = sized(thumbnailLink);
         if (!link) return;
 

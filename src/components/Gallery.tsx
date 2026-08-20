@@ -5,6 +5,7 @@ import { DriveImage } from "@/components/DriveImage";
 import { SectionLabel } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
 import { TripNotes } from "@/components/TripNotes";
+import { Viewer } from "@/components/Viewer";
 import { ROOT_FOLDER, type Place } from "@/lib/catalog";
 import {
   isDisplayable,
@@ -149,6 +150,7 @@ export function Gallery({ place }: { place: Place }) {
                   <DriveImage
                     fileId={trip.shots[0].id}
                     thumbnailLink={trip.shots[0].thumbnailLink}
+                    thumbId={trip.shots[0].thumbId}
                     alt=""
                     className="aspect-square w-16 bg-surface-2 object-cover"
                   />
@@ -183,6 +185,8 @@ export function Gallery({ place }: { place: Place }) {
 }
 
 function OpenTrip({ trip, onBack }: { trip: Trip; onBack?: () => void }) {
+  const [viewing, setViewing] = useState<number | null>(null);
+
   return (
     <>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -212,23 +216,39 @@ function OpenTrip({ trip, onBack }: { trip: Trip; onBack?: () => void }) {
       <TripNotes folderId={trip.folderId} />
 
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {trip.shots.map((shot) => (
-          <Tile key={shot.id} shot={shot} />
+        {trip.shots.map((shot, i) => (
+          <Tile key={shot.id} shot={shot} onOpen={() => setViewing(i)} />
         ))}
       </ul>
+
+      {viewing !== null && (
+        <Viewer
+          shots={trip.shots}
+          index={viewing}
+          onClose={() => setViewing(null)}
+          onMove={setViewing}
+        />
+      )}
     </>
   );
 }
 
-function Tile({ shot }: { shot: Shot }) {
+function Tile({ shot, onOpen }: { shot: Shot; onOpen: () => void }) {
   const approximate = shot.geoSource !== "exif";
 
   return (
     <li className="relative">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Abrir ${shot.name}`}
+        className="block w-full cursor-pointer"
+      >
       {isDisplayable(shot) ? (
         <DriveImage
           fileId={shot.id}
           thumbnailLink={shot.thumbnailLink}
+          thumbId={shot.thumbId}
           alt={shot.name}
           className="aspect-square w-full bg-surface-2 object-cover"
         />
@@ -239,6 +259,8 @@ function Tile({ shot }: { shot: Shot }) {
           </span>
         </div>
       )}
+
+      </button>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-1.5">
         {shot.takenAt && (

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AnniversaryCard } from "@/components/AnniversaryCard";
 import { NewPlaceForm } from "@/components/NewPlaceForm";
 import { SectionLabel, SessionGate, Shell } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
@@ -44,6 +45,8 @@ function Places() {
           "Las fotos se organizarán por sus propias fechas dentro de la carpeta del país."
         )}
       </p>
+
+      {!empty && <AnniversaryCard places={places} />}
 
       <NewPlaceForm />
 

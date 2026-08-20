@@ -21,6 +21,8 @@ export type Shot = {
   name: string;
   mimeType: string;
   thumbnailLink?: string;
+  /** Our own 400px copy, when the upload managed to make one. */
+  thumbId?: string;
   takenAt: Date | null;
   lat: number | null;
   lng: number | null;
@@ -49,6 +51,7 @@ function toShot(file: DriveFile): Shot {
     name: file.name,
     mimeType: file.mimeType,
     thumbnailLink: file.thumbnailLink,
+    thumbId: properties.thumbId,
     takenAt: takenAt && Number.isFinite(takenAt.getTime()) ? takenAt : null,
     lat: Number.isFinite(lat) ? lat : null,
     lng: Number.isFinite(lng) ? lng : null,

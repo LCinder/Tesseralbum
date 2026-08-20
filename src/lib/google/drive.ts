@@ -681,3 +681,43 @@ export async function readQuota(
         driveBytes: Number(quota.usageInDrive ?? 0),
     };
 }
+
+/**
+ * Uploads a small binary in one request.
+ *
+ * For thumbnails, which are a few tens of kilobytes: a resumable session would
+ * be three round trips to move less than one chunk.
+ */
+export async function uploadSmallFile(
+    getToken: TokenSource,
+    blob: Blob,
+    target: { name: string; parentId: string },
+): Promise<DriveFile> {
+    const url = new URL(UPLOAD);
+    url.searchParams.set("uploadType", "multipart");
+    url.searchParams.set("fields", "id,name,mimeType");
+    url.searchParams.set("supportsAllDrives", "true");
+
+    const boundary = `sv${crypto.randomUUID().replace(/-/g, "")}`;
+    const metadata = JSON.stringify({
+        name: target.name,
+        parents: [target.parentId],
+    });
+
+    // Assembled as a Blob rather than a string: the bytes are binary and would
+    // be mangled by any text encoding on the way through.
+    const body = new Blob([
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
+        `--${boundary}\r\nContent-Type: ${blob.type || "image/jpeg"}\r\n\r\n`,
+        blob,
+        `\r\n--${boundary}--\r\n`,
+    ]);
+
+    const response = await call(getToken, url.toString(), {
+        method: "POST",
+        headers: {"Content-Type": `multipart/related; boundary=${boundary}`},
+        body,
+    });
+
+    return (await response.json()) as DriveFile;
+}

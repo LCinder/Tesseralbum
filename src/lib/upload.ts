@@ -1,4 +1,5 @@
 import { ROOT_FOLDER, type Place } from "@/lib/catalog";
+import { makeThumbnail, thumbName } from "@/lib/thumbnail";
 import {
   createFolder,
   ensurePath,
@@ -7,6 +8,7 @@ import {
   startResumableUpload,
   update,
   uploadFileChunks,
+  uploadSmallFile,
   type TokenSource,
 } from "@/lib/google/drive";
 import type { MediaFile } from "@/lib/media";
@@ -29,6 +31,15 @@ import {
  * there. The folder decision is the subtle half — a batch can be the tail of
  * a trip already on disk, or the start of a new visit to the same country.
  */
+
+/**
+ * Where thumbnails live: one flat folder beside the country folders.
+ *
+ * A leading dot keeps it out of the way in Drive without hiding it — Drive has
+ * no hidden files, and pretending otherwise would be worse than a folder the
+ * user can see and understand.
+ */
+const THUMBS_FOLDER = ".thumbs";
 
 export type TripFolder = {
   id: string;
@@ -153,6 +164,40 @@ export function itemKey(item: MediaFile): string {
 }
 
 /**
+ * Makes a thumbnail, stores it, and points the original at it.
+ *
+ * The id goes on the *original* rather than the thumbnail carrying a back
+ * reference, so listing photos already yields their thumbnails: no extra query
+ * when the gallery opens, which is the whole point of doing this at all.
+ *
+ * Never throws. A browser that cannot decode the file — HEIC in Chrome, an
+ * unusual codec — simply gets no thumbnail, and the viewer falls back the way
+ * it did before.
+ */
+async function attachThumbnail(
+  getToken: TokenSource,
+  item: MediaFile,
+  fileId: string,
+  thumbsFolderId: string | null,
+): Promise<void> {
+  if (!thumbsFolderId) return;
+
+  try {
+    const blob = await makeThumbnail(item.file, item.kind);
+    if (!blob) return;
+
+    const thumb = await uploadSmallFile(getToken, blob, {
+      name: thumbName(item.file.name),
+      parentId: thumbsFolderId,
+    });
+
+    await update(getToken, fileId, { appProperties: { thumbId: thumb.id } });
+  } catch {
+    // A missing thumbnail costs a slower first view, nothing more.
+  }
+}
+
+/**
  * Uploads a batch, reporting after every step.
  *
  * One file at a time on purpose: parallel uploads would race on the folder
@@ -194,6 +239,15 @@ export async function uploadBatch(
   const folder = await resolveTripFolder(getToken, place, span);
   report(folder);
 
+  // Resolved once for the batch. If it cannot be created the upload still goes
+  // ahead — thumbnails are an optimisation, not a requirement.
+  let thumbsId: string | null = null;
+  try {
+    thumbsId = await ensurePath(getToken, [ROOT_FOLDER, THUMBS_FOLDER]);
+  } catch {
+    thumbsId = null;
+  }
+
   for (const item of media) {
     if (signal?.aborted) return;
 
@@ -234,6 +288,11 @@ export async function uploadBatch(
           report(folder);
         },
       });
+
+      // Best effort, and deliberately after the photo is safe: a thumbnail is
+      // a preview, and failing an upload over one would be losing a photo to
+      // save a picture of it.
+      await attachThumbnail(getToken, item, uploaded.id, thumbsId);
 
       states.set(key, { status: "done", fileId: uploaded.id });
       report(folder);

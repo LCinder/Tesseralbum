@@ -18,6 +18,7 @@ export type Preview = {
   id: string;
   name: string;
   thumbnailLink?: string;
+  thumbId?: string;
   mimeType: string;
 };
 

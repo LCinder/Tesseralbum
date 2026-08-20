@@ -118,6 +118,7 @@ function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
             id: file.id,
             name: file.name,
             thumbnailLink: file.thumbnailLink,
+            thumbId: file.appProperties?.thumbId,
             mimeType: file.mimeType,
           })),
         );
