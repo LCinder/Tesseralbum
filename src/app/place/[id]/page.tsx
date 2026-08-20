@@ -1,10 +1,11 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import { Gallery } from "@/components/Gallery";
 import { SessionGate, Shell } from "@/components/Shell";
+import { UploadPreview } from "@/components/UploadPreview";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
 import { isConfigured } from "@/lib/env";
@@ -26,6 +27,12 @@ export default function PlacePage({ params }: PageProps<"/place/[id]">) {
 
 function Album({ id }: { id: string }) {
   const { catalog } = useSession();
+
+  // Declared before the guard below: a hook after a conditional return would
+  // run on some renders and not others.
+  const [uploading, setUploading] = useState(false);
+  const [galleryKey, setGalleryKey] = useState(0);
+
   if (!catalog) return null;
 
   const place = catalog.places.find((candidate) => candidate.id === id);
@@ -65,11 +72,48 @@ function Album({ id }: { id: string }) {
         {place.city}
       </h1>
 
-      <p className="mb-10 font-mono text-sm text-ink-soft tabular-nums">
-        {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
-      </p>
+      <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
+        <p className="font-mono text-sm text-ink-soft tabular-nums">
+          {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
+        </p>
 
-      <Gallery place={place} />
+        {!uploading && (
+          <button
+            type="button"
+            onClick={() => setUploading(true)}
+            className="t-display cursor-pointer rounded-sm bg-accent px-4 py-2 font-semibold text-accent-ink transition-opacity hover:opacity-90"
+          >
+            Subir fotos
+          </button>
+        )}
+      </div>
+
+      {/* Closed by default: this page is for looking at photos, and a file
+          picker sitting open under every album would be furniture. */}
+      {uploading && (
+        <div className="mb-10 border-l-[3px] border-accent bg-accent-bg px-4 py-4">
+          <div className="mb-4 flex items-baseline justify-between gap-4">
+            <span className="t-label text-accent">Añadir a {place.city}</span>
+            <button
+              type="button"
+              onClick={() => setUploading(false)}
+              className="t-label cursor-pointer text-ink-soft hover:underline"
+            >
+              Cerrar
+            </button>
+          </div>
+
+          <UploadPreview
+            place={place}
+            slug={place.slug}
+            // Remounting the gallery is how it picks up what just arrived;
+            // otherwise the album underneath keeps showing the old count.
+            onUploaded={() => setGalleryKey((n) => n + 1)}
+          />
+        </div>
+      )}
+
+      <Gallery key={galleryKey} place={place} />
 
       <div className="mt-10 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-rule pt-4">
         <span className="t-label text-ink-soft">Su chip</span>
@@ -82,7 +126,6 @@ function Album({ id }: { id: string }) {
           />
         </span>
       </div>
-
     </>
   );
 }

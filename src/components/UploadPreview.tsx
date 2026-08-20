@@ -32,13 +32,19 @@ import {
 export function UploadPreview({
   place,
   slug,
+  onUploaded,
 }: {
   place: Place;
   slug: string;
+  /** Called once a batch put at least one new file in Drive. */
+  onUploaded?: () => void;
 }) {
   const { getToken } = useSession();
   const input = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
+  // The last progress seen, so the finished batch can be inspected without
+  // waiting for a re-render to settle.
+  const lastProgress = useRef<Progress | null>(null);
 
   const [media, setMedia] = useState<MediaFile[] | null>(null);
   const [rejected, setRejected] = useState<string[]>([]);
@@ -112,8 +118,18 @@ export function UploadPreview({
         place,
         slug,
         signal: controller.signal,
-        onProgress: setProgress,
+        onProgress: (next) => {
+          lastProgress.current = next;
+          setProgress(next);
+        },
       });
+
+      const added = [...(lastProgress.current?.states.values() ?? [])].some(
+        (state) => state.status === "done",
+      );
+      // Only when something actually landed: a batch of duplicates changes
+      // nothing, and refetching an album for no reason is wasted work.
+      if (added) onUploaded?.();
     } catch (cause) {
       setProblem(
         cause instanceof Error ? cause.message : "No se pudo subir el lote.",
