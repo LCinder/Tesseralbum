@@ -19,6 +19,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {status === "connected" && (
               <>
                 <Link
+                  href="/map"
+                  className="t-label text-ink-soft hover:text-accent hover:underline"
+                >
+                  Mapa
+                </Link>
+                <Link
                   href="/admin"
                   className="t-label text-ink-soft hover:text-accent hover:underline"
                 >

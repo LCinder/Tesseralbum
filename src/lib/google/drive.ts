@@ -220,6 +220,50 @@ export async function listChildren(
   return files;
 }
 
+/**
+ * Every media file the app has ever created, in one paginated sweep.
+ *
+ * No parent constraint is needed, and that is the quiet advantage of the
+ * `drive.file` scope: it already limits the result to our own files, so
+ * "everything we uploaded" is a single query instead of a walk down the folder
+ * tree. A map over the whole archive needs exactly this.
+ *
+ * Page tokens are still sequential, so cost grows with the archive: roughly
+ * one round trip per hundred files.
+ */
+export async function listAllMedia(
+  getToken: TokenSource,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<DriveFile[]> {
+  const files: DriveFile[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = new URL(FILES);
+    url.searchParams.set(
+      "q",
+      `mimeType != ${quote(FOLDER_MIME)} and trashed = false`,
+    );
+    url.searchParams.set("fields", `nextPageToken, files(${MEDIA_FIELDS})`);
+    url.searchParams.set("pageSize", "100");
+    url.searchParams.set("supportsAllDrives", "true");
+    url.searchParams.set("includeItemsFromAllDrives", "true");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+    const response = await call(getToken, url.toString(), { signal });
+    const body = (await response.json()) as {
+      files?: DriveFile[];
+      nextPageToken?: string;
+    };
+
+    files.push(...(body.files ?? []));
+    pageToken = body.nextPageToken;
+  } while (pageToken);
+
+  // souvenirs.json lives in the same scope and is not a photo.
+  return files.filter((file) => file.mimeType !== "application/json");
+}
+
 /** Finds a file the app uploaded earlier with this exact content hash. */
 export async function findByHash(
   getToken: TokenSource,
