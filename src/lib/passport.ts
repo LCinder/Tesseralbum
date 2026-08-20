@@ -1,6 +1,9 @@
 import type { Place } from "@/lib/catalog";
 import { spanFromProperties, type DateSpan } from "@/lib/trips";
 
+// Re-exported so the passport page keeps one import for everything it shows.
+export { flagOf } from "@/lib/flags";
+
 /**
  * What the archive adds up to.
  *
@@ -144,23 +147,6 @@ function earlier(current: Date | null, candidate: Date): Date {
 
 function later(current: Date | null, candidate: Date): Date {
   return current === null || candidate > current ? candidate : current;
-}
-
-/**
- * The flag for a country, from its ISO code.
- *
- * Regional indicator symbols: 'E' + 'S' become the two code points that a
- * font renders as the Spanish flag. No image, no request, no dependency.
- * Returns an empty string for a code that is not two letters, since a broken
- * flag reads worse than none.
- */
-export function flagOf(countryCode: string): string {
-  const code = countryCode.trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return "";
-
-  return String.fromCodePoint(
-    ...[...code].map((letter) => 0x1f1e6 + letter.charCodeAt(0) - 65),
-  );
 }
 
 /**

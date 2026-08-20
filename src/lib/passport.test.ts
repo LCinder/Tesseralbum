@@ -4,7 +4,6 @@ import type { Place } from "./catalog";
 import {
   buildPassport,
   daysInSpan,
-  flagOf,
   tripsFromListing,
   type TripRecord,
 } from "./passport";
@@ -183,19 +182,6 @@ test("a place with no trips is not a visited city", () => {
 
   assert.equal(passport.cityCount, 1);
   assert.equal(passport.countries.length, 1);
-});
-
-test("flags come from the country code", () => {
-  assert.equal(flagOf("JP"), "🇯🇵");
-  assert.equal(flagOf("es"), "🇪🇸");
-  assert.equal(flagOf(" ie "), "🇮🇪");
-});
-
-test("a code that is not two letters yields no flag rather than a broken one", () => {
-  assert.equal(flagOf(""), "");
-  assert.equal(flagOf("E"), "");
-  assert.equal(flagOf("ESP"), "");
-  assert.equal(flagOf("12"), "");
 });
 
 test("trips are rebuilt from a flat listing of folders and files", () => {

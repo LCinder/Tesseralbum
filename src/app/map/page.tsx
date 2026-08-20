@@ -9,6 +9,7 @@ import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
 import { sortedPlaces, type Place } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
+import { flagOf } from "@/lib/flags";
 import { listByPlace } from "@/lib/google/drive";
 import { countriesOf, type Preview } from "@/lib/map";
 
@@ -140,14 +141,21 @@ function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
 
   return (
     <div className="mt-8">
-      <SectionLabel>{place.country}</SectionLabel>
+      <SectionLabel>
+        {flagOf(place.countryCode) && (
+          <span aria-hidden="true" className="mr-1.5">
+            {flagOf(place.countryCode)}
+          </span>
+        )}
+        {place.country}
+      </SectionLabel>
 
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h2 className="t-display text-2xl font-bold">{place.city}</h2>
         <div className="flex items-baseline gap-4">
           <Link
             href={`/place/${place.id}`}
-            className="t-label text-accent hover:underline"
+            className="t-label rounded-sm bg-accent px-3 py-1.5 text-accent-ink transition-opacity hover:opacity-90"
           >
             Ver álbum
           </Link>

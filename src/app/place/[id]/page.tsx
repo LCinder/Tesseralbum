@@ -8,6 +8,7 @@ import { SessionGate, Shell } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
 import { isConfigured } from "@/lib/env";
+import { flagOf } from "@/lib/flags";
 
 export default function PlacePage({ params }: PageProps<"/place/[id]">) {
   const { id } = use(params);
@@ -51,7 +52,14 @@ function Album({ id }: { id: string }) {
 
   return (
     <>
-      <p className="t-label mb-2 text-teal">{place.country}</p>
+      <p className="t-label mb-2 text-teal">
+        {flagOf(place.countryCode) && (
+          <span aria-hidden="true" className="mr-1.5">
+            {flagOf(place.countryCode)}
+          </span>
+        )}
+        {place.country}
+      </p>
 
       <h1 className="t-display mb-3 text-5xl font-bold leading-none sm:text-6xl">
         {place.city}

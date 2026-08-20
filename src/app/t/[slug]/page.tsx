@@ -8,6 +8,7 @@ import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
 import { findPlaceBySlug } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
+import { flagOf } from "@/lib/flags";
 
 /**
  * The NFC landing page.
@@ -60,7 +61,14 @@ function Scanned({ slug }: { slug: string }) {
 
   return (
     <>
-      <p className="t-label mb-2 text-teal">{place.country}</p>
+      <p className="t-label mb-2 text-teal">
+        {flagOf(place.countryCode) && (
+          <span aria-hidden="true" className="mr-1.5">
+            {flagOf(place.countryCode)}
+          </span>
+        )}
+        {place.country}
+      </p>
 
       <h1 className="t-display mb-3 text-5xl font-bold leading-none sm:text-6xl">
         {place.city}
@@ -73,7 +81,10 @@ function Scanned({ slug }: { slug: string }) {
       <UploadPreview place={place} slug={place.slug} />
 
       <p className="mt-10">
-        <Link href={`/place/${place.id}`} className="text-accent underline">
+        <Link
+          href={`/place/${place.id}`}
+          className="t-display inline-block rounded-sm bg-accent px-5 py-3 font-semibold text-accent-ink transition-opacity hover:opacity-90"
+        >
           Ver el álbum de {place.city}
         </Link>
       </p>
