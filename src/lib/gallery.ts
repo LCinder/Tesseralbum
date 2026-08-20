@@ -1,8 +1,7 @@
-import { ROOT_FOLDER, type Place } from "@/lib/catalog";
+import { type Place } from "@/lib/catalog";
 import {
-  FOLDER_MIME,
-  findChild,
-  listChildren,
+  listAllFolders,
+  listByPlace,
   type DriveFile,
   type TokenSource,
 } from "@/lib/google/drive";
@@ -11,9 +10,8 @@ import { spanFromProperties, type DateSpan } from "@/lib/trips";
 /**
  * Reading the album back out of Drive.
  *
- * Deliberately uses `findChild` rather than `ensurePath`: looking at a place
- * that has no photos yet must not create folders as a side effect of being
- * viewed.
+ * Nothing here creates anything: looking at a place with no photos yet must
+ * not leave folders behind as a side effect of having been viewed.
  */
 
 export type Shot = {
@@ -63,49 +61,59 @@ function toShot(file: DriveFile): Shot {
 /**
  * Every trip that has photos for this place, newest first.
  *
- * Photos are filtered by the `placeId` they carry, because a country folder is
- * shared: Dublín and Cork both file under Irlanda, and one trip folder can
- * hold photos from both if two stickers were scanned along the way.
+ * Two queries, run at once, rather than a walk down country → year → trip →
+ * files. That walk was strictly sequential — each level needed the ids from
+ * the one above — so a place with three trips cost eight round trips before
+ * anything could render, which on a phone is over a second of waiting.
+ *
+ * Photos carry their `placeId`, so asking for them directly skips the tree
+ * entirely; the folders supply the names and dates. It is also what keeps
+ * Dublín and Cork apart when both filed under Irlanda on the same journey.
  */
 export async function listTrips(
   getToken: TokenSource,
   place: Place,
 ): Promise<Trip[]> {
-  const country = await findChild(getToken, "root", ROOT_FOLDER, {
-    folder: true,
-  }).then((root) =>
-    root ? findChild(getToken, root.id, place.country, { folder: true }) : null,
-  );
+  const [files, folders] = await Promise.all([
+    listByPlace(getToken, place.id),
+    listAllFolders(getToken),
+  ]);
 
-  if (!country) return [];
+  if (files.length === 0) return [];
 
-  const years = await listChildren(getToken, country.id, { foldersOnly: true });
+  const byId = new Map(folders.map((folder) => [folder.id, folder]));
+
+  // Grouped by the folder each photo sits in, which is its trip.
+  const grouped = new Map<string, Shot[]>();
+
+  for (const file of files) {
+    const folderId = file.parents?.[0];
+    if (!folderId) continue;
+
+    const shots = grouped.get(folderId);
+    if (shots) shots.push(toShot(file));
+    else grouped.set(folderId, [toShot(file)]);
+  }
+
   const trips: Trip[] = [];
 
-  for (const year of years) {
-    const folders = await listChildren(getToken, year.id, {
-      foldersOnly: true,
+  for (const [folderId, shots] of grouped) {
+    const folder = byId.get(folderId);
+    // A photo whose folder is gone cannot be placed in a trip, and inventing
+    // one would put a journey on the page that does not exist in Drive.
+    if (!folder) continue;
+
+    const yearFolder = folder.parents?.[0]
+      ? byId.get(folder.parents[0])
+      : undefined;
+
+    trips.push({
+      folderId,
+      name: folder.name,
+      year: yearFolder?.name ?? "",
+      span: spanFromProperties(folder.appProperties),
+      shots: shots.sort(byDateThenName),
     });
-
-    for (const folder of folders) {
-      const children = await listChildren(getToken, folder.id);
-
-      const shots = children
-        .filter((file) => file.mimeType !== FOLDER_MIME)
-        .filter((file) => file.appProperties?.placeId === place.id)
-        .map(toShot)
-        .sort(byDateThenName);
-
-      if (shots.length === 0) continue;
-
-      trips.push({
-        folderId: folder.id,
-        name: folder.name,
-        year: year.name,
-        span: spanFromProperties(folder.appProperties),
-        shots,
-      });
-    }
   }
 
   // Newest trip first. Within a year, the span decides; folders without one

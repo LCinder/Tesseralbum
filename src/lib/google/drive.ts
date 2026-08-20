@@ -362,24 +362,79 @@ export async function writeText(
 export async function listByPlace(
     getToken: TokenSource,
     placeId: string,
-    {limit = 3, signal}: { limit?: number; signal?: AbortSignal } = {},
+    {limit, signal}: { limit?: number; signal?: AbortSignal } = {},
 ): Promise<DriveFile[]> {
-    const url = new URL(FILES);
-    url.searchParams.set(
-        "q",
-        `appProperties has { key='placeId' and value=${quote(placeId)} } and mimeType != ${quote(FOLDER_MIME)} and trashed = false`,
-    );
-    url.searchParams.set("fields", `files(${MEDIA_FIELDS})`);
-    url.searchParams.set("pageSize", String(limit));
-    // Newest first, so a preview shows the most recent trip rather than whatever
-    // Drive happens to return.
-    url.searchParams.set("orderBy", "createdTime desc");
-    url.searchParams.set("supportsAllDrives", "true");
-    url.searchParams.set("includeItemsFromAllDrives", "true");
+    const files: DriveFile[] = [];
+    let pageToken: string | undefined;
 
-    const response = await call(getToken, url.toString(), {signal});
-    const body = (await response.json()) as { files?: DriveFile[] };
-    return body.files ?? [];
+    do {
+        const url = new URL(FILES);
+        url.searchParams.set(
+            "q",
+            `appProperties has { key='placeId' and value=${quote(placeId)} } and mimeType != ${quote(FOLDER_MIME)} and trashed = false`,
+        );
+        url.searchParams.set("fields", `nextPageToken, files(${MEDIA_FIELDS})`);
+        url.searchParams.set("pageSize", String(limit ?? 100));
+        // Newest first, so a preview shows the most recent trip rather than
+        // whatever Drive happens to return.
+        url.searchParams.set("orderBy", "createdTime desc");
+        url.searchParams.set("supportsAllDrives", "true");
+        url.searchParams.set("includeItemsFromAllDrives", "true");
+        if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+        const response = await call(getToken, url.toString(), {signal});
+        const body = (await response.json()) as {
+            files?: DriveFile[];
+            nextPageToken?: string;
+        };
+
+        files.push(...(body.files ?? []));
+        // A caller that asked for a handful wants one request, not the archive.
+        pageToken = limit ? undefined : body.nextPageToken;
+    } while (pageToken);
+
+    return files;
+}
+
+/**
+ * Every folder the app has created.
+ *
+ * Paired with `listByPlace` this replaces a walk down the tree — country, year,
+ * trip, files — with two queries that can run at once.
+ */
+export async function listAllFolders(
+    getToken: TokenSource,
+    {signal}: { signal?: AbortSignal } = {},
+): Promise<DriveFile[]> {
+    const folders: DriveFile[] = [];
+    let pageToken: string | undefined;
+
+    do {
+        const url = new URL(FILES);
+        url.searchParams.set(
+            "q",
+            `mimeType = ${quote(FOLDER_MIME)} and trashed = false`,
+        );
+        url.searchParams.set(
+            "fields",
+            "nextPageToken, files(id,name,mimeType,appProperties,parents)",
+        );
+        url.searchParams.set("pageSize", "100");
+        url.searchParams.set("supportsAllDrives", "true");
+        url.searchParams.set("includeItemsFromAllDrives", "true");
+        if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+        const response = await call(getToken, url.toString(), {signal});
+        const body = (await response.json()) as {
+            files?: DriveFile[];
+            nextPageToken?: string;
+        };
+
+        folders.push(...(body.files ?? []));
+        pageToken = body.nextPageToken;
+    } while (pageToken);
+
+    return folders;
 }
 
 /** Finds a file the app uploaded earlier with this exact content hash. */
