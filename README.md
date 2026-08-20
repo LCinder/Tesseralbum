@@ -132,7 +132,7 @@ Un registro NDEF de tipo URI con esa URL. Cabe de sobra en un NTAG213.
 |---|---|
 | `npm run dev` | Servidor de desarrollo |
 | `npm run build` | Build de producción |
-| `npm test` | 140 tests de la lógica pura |
+| `npm test` | 142 tests de la lógica pura |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 
@@ -178,7 +178,7 @@ docs/
 
 ## Estado de verificación
 
-Comprobado automáticamente en cada cambio: **140 tests**, typecheck, lint y
+Comprobado automáticamente en cada cambio: **142 tests**, typecheck, lint y
 build.
 
 Comprobado a mano contra Google: consentimiento, creación de carpetas,

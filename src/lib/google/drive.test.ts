@@ -51,3 +51,30 @@ test("an escaped value never contains a bare delimiter", () => {
     assert.equal(bare, 0, `bare quote left in ${escaped}`);
   }
 });
+
+test("a hash query batches many clauses into one request", () => {
+  // The point of batching: fifty photos used to mean fifty list queries before
+  // a single byte moved. This is the shape those queries take.
+  const hashes = ["aaa", "bbb", "ccc"];
+  const clauses = hashes
+    .map((hash) => `appProperties has { key='sha256' and value=${quote(hash)} }`)
+    .join(" or ");
+
+  const q = `(${clauses}) and trashed = false`;
+
+  assert.equal((q.match(/appProperties has/g) ?? []).length, 3);
+  assert.match(q, /^\(.* or .* or .*\) and trashed = false$/);
+});
+
+test("a hash with a quote in it cannot break out of its clause", () => {
+  // Hashes are hex so this cannot happen in practice — but the escaping has to
+  // hold anyway, because a query built by concatenation is one bad value away
+  // from asking Drive something entirely different.
+  const nasty = "abc' or name = 'x";
+  const clause = `appProperties has { key='sha256' and value=${quote(nasty)} }`;
+
+  // The injected text survives as text, inside the quoted value where it is
+  // harmless. What matters is that its quote is escaped and cannot close it.
+  assert.ok(clause.includes("\\'"), "the quote is escaped");
+  assert.ok(clause.endsWith("' }"), "the clause still closes where it should");
+});

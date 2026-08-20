@@ -126,11 +126,14 @@ export function SessionProvider({
     setHandle(opened);
     saveCatalogSnapshot(opened);
 
-    // Learn the account for next time. A failure here costs an account
-    // chooser later, not this session.
-    void readAccountEmail(getToken)
-      .then((email) => email && saveAccount(email))
-      .catch(() => {});
+    // Learn the account for next time, once. Asking again on every load would
+    // spend a request to re-read something that does not change, and a failure
+    // here costs an account chooser later rather than this session.
+    if (!loadAccount()) {
+      void readAccountEmail(getToken)
+        .then((email) => email && saveAccount(email))
+        .catch(() => {});
+    }
     setStale(false);
     setStatus("connected");
     setError(null);

@@ -3,7 +3,7 @@ import { makeThumbnail, thumbName } from "@/lib/thumbnail";
 import {
   createFolder,
   ensurePath,
-  findByHash,
+  findByHashes,
   listChildren,
   startResumableUpload,
   update,
@@ -114,7 +114,12 @@ export async function resolveTripFolder(
 }
 
 /** What the app records about a photo, on the photo itself. */
-function propertiesFor(item: MediaFile, place: Place, slug: string) {
+function propertiesFor(
+  item: MediaFile,
+  place: Place,
+  slug: string,
+  thumbId: string | null,
+) {
   const properties: Record<string, string> = {
     placeId: place.id,
     tagSlug: slug,
@@ -122,6 +127,7 @@ function propertiesFor(item: MediaFile, place: Place, slug: string) {
     dateSource: item.dateSource,
   };
 
+  if (thumbId) properties.thumbId = thumbId;
   if (item.sha256) properties.sha256 = item.sha256;
   if (item.takenAt) properties.takenAt = item.takenAt.toISOString();
 
@@ -155,36 +161,39 @@ export function itemKey(item: MediaFile): string {
 }
 
 /**
- * Makes a thumbnail, stores it, and points the original at it.
+ * Makes a thumbnail and stores it, returning its id for the original to carry.
  *
- * The id goes on the *original* rather than the thumbnail carrying a back
- * reference, so listing photos already yields their thumbnails: no extra query
- * when the gallery opens, which is the whole point of doing this at all.
+ * Done *before* the photo rather than after, so the id can go in at creation.
+ * Patching it on afterwards cost an extra request per file — a hundred wasted
+ * calls on a fifty-photo trip.
+ *
+ * The trade is an orphaned thumbnail if the photo upload then fails: a few
+ * tens of kilobytes, against a request saved every single time it works.
  *
  * Never throws. A browser that cannot decode the file — HEIC in Chrome, an
  * unusual codec — simply gets no thumbnail, and the viewer falls back the way
  * it did before.
  */
-async function attachThumbnail(
+async function makeAndStoreThumbnail(
   getToken: TokenSource,
   item: MediaFile,
-  fileId: string,
   thumbsFolderId: string | null,
-): Promise<void> {
-  if (!thumbsFolderId) return;
+): Promise<string | null> {
+  if (!thumbsFolderId) return null;
 
   try {
     const blob = await makeThumbnail(item.file, item.kind);
-    if (!blob) return;
+    if (!blob) return null;
 
     const thumb = await uploadSmallFile(getToken, blob, {
       name: thumbName(item.file.name),
       parentId: thumbsFolderId,
     });
 
-    await update(getToken, fileId, { appProperties: { thumbId: thumb.id } });
+    return thumb.id;
   } catch {
     // A missing thumbnail costs a slower first view, nothing more.
+    return null;
   }
 }
 
@@ -239,35 +248,45 @@ export async function uploadBatch(
     thumbsId = null;
   }
 
+  // Every hash at once, before the loop. Asked file by file this was one
+  // query per photo — fifty round trips spent before a single byte moved.
+  for (const item of media) {
+    if (item.sha256) states.set(itemKey(item), { status: "hashing" });
+  }
+  report(folder);
+
+  const known = await findByHashes(
+    getToken,
+    media.map((item) => item.sha256).filter((hash): hash is string => !!hash),
+    { signal },
+  );
+
   for (const item of media) {
     if (signal?.aborted) return;
 
     const key = itemKey(item);
 
     try {
-      // Skipping a duplicate costs one query; uploading one costs the whole
-      // file twice over.
-      if (item.sha256) {
-        states.set(key, { status: "hashing" });
+      const alreadyThere = item.sha256 ? known.get(item.sha256) : undefined;
+      if (alreadyThere) {
+        states.set(key, { status: "duplicate", existingId: alreadyThere });
         report(folder);
-
-        const existing = await findByHash(getToken, item.sha256);
-        if (existing) {
-          states.set(key, { status: "duplicate", existingId: existing.id });
-          report(folder);
-          continue;
-        }
+        continue;
       }
 
       states.set(key, { status: "uploading", sent: 0 });
       report(folder);
+
+      // Before the photo, so its id can go in at creation rather than costing
+      // a second request to patch on afterwards.
+      const thumbId = await makeAndStoreThumbnail(getToken, item, thumbsId);
 
       const session = await startResumableUpload(
         getToken,
         {
           name: item.file.name,
           parentId: folder.id,
-          appProperties: propertiesFor(item, place, slug),
+          appProperties: propertiesFor(item, place, slug, thumbId),
         },
         item.file,
       );
@@ -279,11 +298,6 @@ export async function uploadBatch(
           report(folder);
         },
       });
-
-      // Best effort, and deliberately after the photo is safe: a thumbnail is
-      // a preview, and failing an upload over one would be losing a photo to
-      // save a picture of it.
-      await attachThumbnail(getToken, item, uploaded.id, thumbsId);
 
       states.set(key, { status: "done", fileId: uploaded.id });
       report(folder);

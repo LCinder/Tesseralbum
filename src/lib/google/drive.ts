@@ -10,7 +10,7 @@
  * drive.google.com is invisible here. The app has to build its own tree.
  */
 
-import { THUMBS_FOLDER } from "@/lib/catalog";
+import {THUMBS_FOLDER} from "@/lib/catalog";
 
 const FILES = "https://www.googleapis.com/drive/v3/files";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
@@ -438,23 +438,61 @@ export async function listAllFolders(
 }
 
 /** Finds a file the app uploaded earlier with this exact content hash. */
-export async function findByHash(
-    getToken: TokenSource,
-    sha256: string,
-): Promise<DriveFile | null> {
-    const url = new URL(FILES);
-    url.searchParams.set(
-        "q",
-        `appProperties has { key='sha256' and value=${quote(sha256)} } and trashed = false`,
-    );
-    url.searchParams.set("fields", "files(id,name,mimeType,appProperties)");
-    url.searchParams.set("pageSize", "1");
-    url.searchParams.set("supportsAllDrives", "true");
-    url.searchParams.set("includeItemsFromAllDrives", "true");
+/**
+ * How many hashes to put in one query.
+ *
+ * Each clause is roughly 135 characters, so twenty keeps the URL well inside
+ * what Google accepts while making a fifty-photo batch cost three requests
+ * rather than fifty.
+ */
+const HASH_BATCH = 20;
 
-    const response = await call(getToken, url.toString());
-    const body = (await response.json()) as { files?: DriveFile[] };
-    return body.files?.[0] ?? null;
+/**
+ * Which of these hashes Drive already holds.
+ *
+ * Asked in batches rather than one at a time: checking a fifty-photo album for
+ * duplicates used to be fifty separate list queries before a single byte moved.
+ *
+ * A failure returns an empty map rather than throwing — the cost of missing a
+ * duplicate is uploading it twice, which is far better than refusing to upload
+ * a trip because the check could not be made.
+ */
+export async function findByHashes(
+    getToken: TokenSource,
+    hashes: string[],
+    {signal}: { signal?: AbortSignal } = {},
+): Promise<Map<string, string>> {
+    const known = new Map<string, string>();
+    const unique = [...new Set(hashes.filter(Boolean))];
+
+    for (let i = 0; i < unique.length; i += HASH_BATCH) {
+        const batch = unique.slice(i, i + HASH_BATCH);
+
+        const clauses = batch
+            .map((hash) => `appProperties has { key='sha256' and value=${quote(hash)} }`)
+            .join(" or ");
+
+        const url = new URL(FILES);
+        url.searchParams.set("q", `(${clauses}) and trashed = false`);
+        url.searchParams.set("fields", "files(id,appProperties)");
+        url.searchParams.set("pageSize", String(HASH_BATCH));
+        url.searchParams.set("supportsAllDrives", "true");
+        url.searchParams.set("includeItemsFromAllDrives", "true");
+
+        try {
+            const response = await call(getToken, url.toString(), {signal});
+            const body = (await response.json()) as { files?: DriveFile[] };
+
+            for (const file of body.files ?? []) {
+                const hash = file.appProperties?.sha256;
+                if (hash) known.set(hash, file.id);
+            }
+        } catch {
+            // Leave this batch unknown; the files in it simply get uploaded.
+        }
+    }
+
+    return known;
 }
 
 /** Renames a file or folder, and optionally rewrites its app properties. */
