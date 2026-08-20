@@ -1,4 +1,4 @@
-import { ROOT_FOLDER, type Place } from "@/lib/catalog";
+import { ROOT_FOLDER, THUMBS_FOLDER, type Place } from "@/lib/catalog";
 import { makeThumbnail, thumbName } from "@/lib/thumbnail";
 import {
   createFolder,
@@ -31,15 +31,6 @@ import {
  * there. The folder decision is the subtle half — a batch can be the tail of
  * a trip already on disk, or the start of a new visit to the same country.
  */
-
-/**
- * Where thumbnails live: one flat folder beside the country folders.
- *
- * A leading dot keeps it out of the way in Drive without hiding it — Drive has
- * no hidden files, and pretending otherwise would be worse than a folder the
- * user can see and understand.
- */
-const THUMBS_FOLDER = ".thumbs";
 
 export type TripFolder = {
   id: string;

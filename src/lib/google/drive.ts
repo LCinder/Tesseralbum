@@ -10,6 +10,8 @@
  * drive.google.com is invisible here. The app has to build its own tree.
  */
 
+import { THUMBS_FOLDER } from "@/lib/catalog";
+
 const FILES = "https://www.googleapis.com/drive/v3/files";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
 
@@ -270,13 +272,22 @@ export async function listEverything(
 
     const [folders, files] = await Promise.all([sweep(true), sweep(false)]);
 
+    // Our own thumbnails are image/jpeg like any other photo, so excluding
+    // them by type is impossible — they have to be excluded by where they
+    // live. Counting them would double every total in the passport.
+    const thumbFolders = new Set(
+        folders.filter((f) => f.name === THUMBS_FOLDER).map((f) => f.id),
+    );
+
     return {
         folders,
-        // souvenirs.json and the trip notes share the scope and are not photos.
         media: files.filter(
             (file) =>
-                file.mimeType.startsWith("image/") ||
-                file.mimeType.startsWith("video/"),
+                // souvenirs.json and the trip notes share the scope and are
+                // not photos.
+                (file.mimeType.startsWith("image/") ||
+                    file.mimeType.startsWith("video/")) &&
+                !file.parents?.some((parent) => thumbFolders.has(parent)),
         ),
     };
 }

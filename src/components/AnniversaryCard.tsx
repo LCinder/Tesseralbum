@@ -9,6 +9,7 @@ import type { Place } from "@/lib/catalog";
 import { listByPlace, listEverything } from "@/lib/google/drive";
 import { tripsFromListing } from "@/lib/passport";
 import type { Preview } from "@/lib/map";
+import { loadAnniversary, saveAnniversary } from "@/lib/session-store";
 
 /**
  * "A year ago today you were in Kyoto."
@@ -16,15 +17,28 @@ import type { Preview } from "@/lib/map";
  * Renders nothing on the great majority of days, and that is the point: a card
  * that appeared every time would be furniture, and furniture gets ignored.
  * When it does appear it should feel like the app remembered something.
+ *
+ * The answer is worked out once a day and kept, because finding it means
+ * sweeping the whole archive and the answer is "no" on all but a handful of
+ * days a year.
  */
+
+type Memory = {
+  placeId: string;
+  label: string;
+  detail: string;
+  previews: Preview[];
+};
+
+/** Local date, so the cache turns over at the reader's midnight. */
+function todayKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+}
+
 export function AnniversaryCard({ places }: { places: Place[] }) {
   const { getToken } = useSession();
-  const [found, setFound] = useState<{
-    place: Place;
-    label: string;
-    detail: string;
-    previews: Preview[];
-  } | null>(null);
+  const [found, setFound] = useState<Memory | null>(null);
 
   useEffect(() => {
     if (places.length === 0) return;
@@ -33,6 +47,17 @@ export function AnniversaryCard({ places }: { places: Place[] }) {
     const controller = new AbortController();
 
     (async () => {
+      const today = todayKey();
+
+      // Answered already today, including a remembered "no". Without this the
+      // home page would sweep the whole archive on every visit, almost always
+      // to find nothing.
+      const cached = loadAnniversary<Memory>(today);
+      if (cached) {
+        if (cached.value) setFound(cached.value);
+        return;
+      }
+
       try {
         const { folders, media } = await listEverything(getToken, {
           signal: controller.signal,
@@ -43,7 +68,11 @@ export function AnniversaryCard({ places }: { places: Place[] }) {
           new Date(),
           tripsFromListing(folders, media),
         );
-        if (!anniversary) return;
+
+        if (!anniversary) {
+          saveAnniversary(today, null);
+          return;
+        }
 
         const place = places.find((p) => p.id === anniversary.trip.placeId);
         if (!place) return;
@@ -54,8 +83,8 @@ export function AnniversaryCard({ places }: { places: Place[] }) {
         });
         if (cancelled) return;
 
-        setFound({
-          place,
+        const memory: Memory = {
+          placeId: place.id,
           label: yearsAgoLabel(anniversary.yearsAgo),
           detail:
             anniversary.tripLength > 1
@@ -68,10 +97,14 @@ export function AnniversaryCard({ places }: { places: Place[] }) {
             thumbId: file.appProperties?.thumbId,
             mimeType: file.mimeType,
           })),
-        });
+        };
+
+        saveAnniversary(today, memory);
+        setFound(memory);
       } catch {
-        // Silent by design: this is a bonus, and an error message about a
-        // memory nobody asked for would be worse than no memory.
+        // Silent by design, and deliberately uncached: a network failure is
+        // not an answer, and storing it would suppress a real memory until
+        // tomorrow.
       }
     })();
 
@@ -83,9 +116,13 @@ export function AnniversaryCard({ places }: { places: Place[] }) {
 
   if (!found) return null;
 
+  const place = places.find((candidate) => candidate.id === found.placeId);
+  // The place could have been deleted since the memory was stored this morning.
+  if (!place) return null;
+
   return (
     <Link
-      href={`/place/${found.place.id}`}
+      href={`/place/${place.id}`}
       className="mb-10 block border-l-[3px] border-accent bg-accent-bg px-4 py-4 transition-opacity hover:opacity-90"
     >
       <p className="t-label mb-1 text-accent">
@@ -94,9 +131,9 @@ export function AnniversaryCard({ places }: { places: Place[] }) {
       </p>
 
       <p className="t-display mb-3 text-2xl font-bold">
-        Estabas en {found.place.city}
+        Estabas en {place.city}
         <span className="ml-2 text-lg font-normal text-ink-soft">
-          {found.place.country}
+          {place.country}
         </span>
       </p>
 

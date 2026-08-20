@@ -67,7 +67,7 @@ de alta una ciudad que ya tienes te devuelve la URL que ya tenía.
 |---|---|
 | `/` | Tus lugares, y el alta de lugares nuevos |
 | `/t/[slug]` | Aterrizaje del NFC: el lugar, y subir fotos |
-| `/place/[id]` | El álbum: la lista de viajes, y dentro las fotos y el diario |
+| `/place/[id]` | El álbum: viajes, fotos, diario y subida |
 | `/map` | Mapa de lugares, con vista previa al pulsar |
 | `/passport` | Países, ciudades, viajes, días fuera y gráfico por año |
 | `/admin` | URLs de los lugares, borrado, cuota y caché |
@@ -132,7 +132,7 @@ Un registro NDEF de tipo URI con esa URL. Cabe de sobra en un NTAG213.
 |---|---|
 | `npm run dev` | Servidor de desarrollo |
 | `npm run build` | Build de producción |
-| `npm test` | 110 tests de la lógica pura |
+| `npm test` | 140 tests de la lógica pura |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 
@@ -156,6 +156,9 @@ src/
     TripNotes.tsx            el diario, con guardado automático
   lib/
     catalog.ts               souvenirs.json                    ← tests
+    anniversary.ts           «hace un año estabas en…»         ← tests
+    thumbnail.ts             miniaturas propias al subir       ← tests
+    flags.ts                 banderas desde el código ISO      ← tests
     trips.ts                 fechas → carpeta del viaje        ← tests
     media.ts                 EXIF, hash y clasificación        ← tests
     limits.ts                topes de tamaño y cuota           ← tests
@@ -175,7 +178,7 @@ docs/
 
 ## Estado de verificación
 
-Comprobado automáticamente en cada cambio: **110 tests**, typecheck, lint y
+Comprobado automáticamente en cada cambio: **140 tests**, typecheck, lint y
 build.
 
 Comprobado a mano contra Google: consentimiento, creación de carpetas,

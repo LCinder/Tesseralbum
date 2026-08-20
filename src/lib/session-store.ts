@@ -21,6 +21,7 @@ import type { Token } from "@/lib/google/gis";
 const TOKEN_KEY = "tesseralbum.token";
 const ACCOUNT_KEY = "tesseralbum.account";
 const CATALOG_KEY = "tesseralbum.catalog";
+const ANNIVERSARY_KEY = "tesseralbum.anniversary";
 
 /**
  * How long a restored catalogue may be shown before it is refreshed.
@@ -74,10 +75,6 @@ export function loadToken(): Token | null {
 
 export function saveToken(token: Token): void {
   write(TOKEN_KEY, token);
-}
-
-export function clearToken(): void {
-  drop(TOKEN_KEY);
 }
 
 type StoredCatalog = {
@@ -137,4 +134,26 @@ export function clearAll(): void {
   drop(TOKEN_KEY);
   drop(CATALOG_KEY);
   drop(ACCOUNT_KEY);
+  drop(ANNIVERSARY_KEY);
+}
+
+/**
+ * Yesterday's answer to "is today an anniversary".
+ *
+ * Working it out means sweeping the whole archive, and the honest answer is
+ * "no" on all but a handful of days a year. Doing that on every visit to the
+ * home page would be the app's largest recurring cost, spent almost entirely
+ * on finding nothing.
+ *
+ * Keyed by calendar date, so it recomputes once a day and never shows a
+ * yesterday's memory as today's.
+ */
+export function loadAnniversary<T>(today: string): { value: T | null } | null {
+  const stored = read<{ date: string; value: T | null }>(ANNIVERSARY_KEY);
+  if (!stored || stored.date !== today) return null;
+  return { value: stored.value };
+}
+
+export function saveAnniversary(today: string, value: unknown): void {
+  write(ANNIVERSARY_KEY, { date: today, value });
 }

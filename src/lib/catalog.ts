@@ -7,7 +7,6 @@ import {
   writeJson,
   type TokenSource,
 } from "@/lib/google/drive";
-import { tripPath, type DateSpan } from "@/lib/trips";
 
 /**
  * The catalogue: the places you have chips for.
@@ -23,6 +22,15 @@ import { tripPath, type DateSpan } from "@/lib/trips";
  */
 
 export const ROOT_FOLDER = "Tesseralbum";
+
+/**
+ * Where our own thumbnails live, beside the country folders.
+ *
+ * Named here rather than in the uploader because readers need it too: a
+ * thumbnail is an image/jpeg like any other, so anything sweeping the archive
+ * has to know to leave this folder out of the count.
+ */
+export const THUMBS_FOLDER = ".thumbs";
 const CATALOG_NAME = "souvenirs.json";
 
 export type Place = {
@@ -354,19 +362,4 @@ export async function removePlace(
   }
 
   return { handle: saved, folder };
-}
-
-/**
- * Where a trip's files go: Tesseralbum/Irlanda/2025/Septiembre-Octubre.
- *
- * The span comes from the photos, never from a form — see `src/lib/trips.ts`.
- * That is what makes a second visit to the same place file itself separately
- * without anyone naming anything.
- */
-export async function ensureTripFolder(
-  getToken: TokenSource,
-  place: Place,
-  span: DateSpan,
-): Promise<string> {
-  return ensurePath(getToken, [ROOT_FOLDER, ...tripPath(place.country, span)]);
 }

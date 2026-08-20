@@ -25,6 +25,8 @@ import {
   saveAccount,
   saveCatalogSnapshot,
   saveToken,
+  loadAnniversary,
+  saveAnniversary,
 } from "./session-store";
 
 const CATALOG = {
@@ -177,4 +179,29 @@ test("storage that throws is treated as no storage", () => {
   assert.doesNotThrow(() => clearAll());
 
   (globalThis as { localStorage: unknown }).localStorage = working;
+});
+
+test("today's answer is remembered, including a remembered no", () => {
+  saveAnniversary("2026-8-20", { placeId: "kioto-japon" });
+  assert.deepEqual(loadAnniversary("2026-8-20"), {
+    value: { placeId: "kioto-japon" },
+  });
+
+  // A "no" has to be stored too, or the archive gets swept again on every
+  // visit for the days when there is nothing to find — which is most of them.
+  saveAnniversary("2026-8-21", null);
+  assert.deepEqual(loadAnniversary("2026-8-21"), { value: null });
+});
+
+test("yesterday's answer is not today's", () => {
+  saveAnniversary("2026-8-19", { placeId: "kioto-japon" });
+
+  assert.equal(loadAnniversary("2026-8-20"), null);
+});
+
+test("signing out forgets the day's memory too", () => {
+  saveAnniversary("2026-8-20", { placeId: "kioto-japon" });
+  clearAll();
+
+  assert.equal(loadAnniversary("2026-8-20"), null);
 });

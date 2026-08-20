@@ -151,7 +151,7 @@ export function UploadPreview({
 
   return (
     <>
-      <SectionLabel>Subir fotos</SectionLabel>
+      <SectionLabel>+</SectionLabel>
 
       {!progress && (
         <>
@@ -403,7 +403,7 @@ function Row({ item, state }: { item: MediaFile; state?: ItemState }) {
           {item.lat !== null && item.lng !== null ? (
             `${item.lat.toFixed(4)}, ${item.lng.toFixed(4)}`
           ) : (
-            <span className="font-sans text-ink-soft">del souvenir</span>
+            <span className="font-sans text-ink-soft">del lugar</span>
           )}
         </td>
         <td className="py-2 tabular-nums">
