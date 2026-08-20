@@ -20,7 +20,38 @@ export type DriveFile = {
   name: string;
   mimeType: string;
   appProperties?: Record<string, string>;
+  /**
+   * Google's own generated thumbnail. Short-lived and served from a different
+   * host, so it is a fast path rather than something to rely on — see
+   * `DriveImage`, which falls back to an authenticated download.
+   */
+  thumbnailLink?: string;
+  size?: string;
 };
+
+/** Fields worth asking for when listing media rather than folders. */
+const MEDIA_FIELDS =
+  "id,name,mimeType,appProperties,thumbnailLink,size";
+
+/**
+ * Downloads a file's bytes.
+ *
+ * The reliable way to show a private image in the browser: this is the Drive
+ * API host, which accepts our bearer token and allows cross-origin requests.
+ * The cost is the whole file, so it is the fallback and not the first choice.
+ */
+export async function downloadBlob(
+  getToken: TokenSource,
+  fileId: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<Blob> {
+  const url = new URL(`${FILES}/${fileId}`);
+  url.searchParams.set("alt", "media");
+  url.searchParams.set("supportsAllDrives", "true");
+
+  const response = await call(getToken, url.toString(), { signal });
+  return response.blob();
+}
 
 export class DriveError extends Error {
   constructor(
@@ -167,7 +198,7 @@ export async function listChildren(
     );
     url.searchParams.set(
       "fields",
-      "nextPageToken, files(id,name,mimeType,appProperties)",
+      `nextPageToken, files(${foldersOnly ? "id,name,mimeType,appProperties" : MEDIA_FIELDS})`,
     );
     url.searchParams.set("pageSize", "100");
     url.searchParams.set("supportsAllDrives", "true");

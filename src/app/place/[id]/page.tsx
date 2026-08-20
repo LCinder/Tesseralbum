@@ -3,10 +3,11 @@
 import { use } from "react";
 import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
+import { Gallery } from "@/components/Gallery";
 import { SectionLabel, SessionGate, Shell } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
-import { ROOT_FOLDER, souvenirsOfPlace } from "@/lib/catalog";
+import { souvenirsOfPlace } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
 
 export default function PlacePage({ params }: PageProps<"/place/[id]">) {
@@ -63,14 +64,7 @@ function Album({ id }: { id: string }) {
         {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
       </p>
 
-      <SectionLabel>Fotos</SectionLabel>
-      <p className="mb-10 max-w-lg text-ink-soft">
-        Todavía ninguna. La galería llega en la fase 2, leyendo{" "}
-        <code className="font-mono text-sm">
-          {ROOT_FOLDER}/{place.country}
-        </code>{" "}
-        de tu Drive.
-      </p>
+      <Gallery place={place} />
 
       <SectionLabel>
         {souvenirs.length} souvenir{souvenirs.length === 1 ? "" : "s"}
