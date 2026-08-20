@@ -1,26 +1,91 @@
 @import "tailwindcss";
 
+/* Nautical chart palette: green-grey paper, pine ink, cartographic
+   overprint magenta for anything that marks a position. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --paper: #edefe9;
+  --surface: #f7f8f4;
+  --surface-2: #e3e7de;
+  --ink: #14201d;
+  --ink-soft: #5a6763;
+  --rule: #d2d8cd;
+  --accent: #b01e75;
+  --accent-bg: #f5e2ee;
+  --accent-ink: #ffffff;
+  --teal: #2b6a64;
+  --teal-bg: #dee9e5;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #0f1513;
+    --surface: #161d1a;
+    --surface-2: #1f2723;
+    --ink: #dfe5e0;
+    --ink-soft: #8a9893;
+    --rule: #2a332f;
+    --accent: #f075b4;
+    --accent-bg: #2c1220;
+    --accent-ink: #1a0710;
+    --teal: #63afa6;
+    --teal-bg: #12241f;
   }
 }
 
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-rule: var(--rule);
+  --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
+  --color-accent-ink: var(--accent-ink);
+  --color-teal: var(--teal);
+  --color-teal-bg: var(--teal-bg);
+
+  --font-display: var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, Menlo, monospace;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), Georgia, serif;
+}
+
+/* Archivo has a variable width axis. Expanded widths give headings the air of
+   a map legend; body copy stays at the normal width. */
+.t-display {
+  font-family: var(--font-display), sans-serif;
+  font-variation-settings: "wdth" 112;
+  letter-spacing: -0.01em;
+}
+
+.t-label {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
