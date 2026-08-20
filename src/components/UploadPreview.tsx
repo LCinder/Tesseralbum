@@ -14,7 +14,13 @@ import {
 } from "@/lib/limits";
 import { formatBytes, readSelection, type MediaFile } from "@/lib/media";
 import { readQuota } from "@/lib/google/drive";
-import { monthLabel, spanOf, tripPath, yearLabel } from "@/lib/trips";
+import {
+  monthLabel,
+  spanOf,
+  tripPath,
+  yearLabel,
+  type DateSpan,
+} from "@/lib/trips";
 import {
   itemKey,
   uploadBatch,
@@ -43,7 +49,9 @@ export function UploadPreview({
   const input = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
   // The last progress seen, so the finished batch can be inspected without
-  // waiting for a re-render to settle.
+  // waiting for a re-render to settle. It also carries across a retry: the
+  // second attempt only reports on the files it took, and the rest of the
+  // table would otherwise forget what it had already said about them.
   const lastProgress = useRef<Progress | null>(null);
 
   const [media, setMedia] = useState<MediaFile[] | null>(null);
@@ -78,6 +86,7 @@ export function UploadPreview({
     if (files.length === 0) return;
 
     setReading(true);
+    lastProgress.current = null;
     setMedia(null);
     setRejected([]);
     setProgress(null);
@@ -94,6 +103,7 @@ export function UploadPreview({
 
   function reset() {
     abort.current?.abort();
+    lastProgress.current = null;
     setMedia(null);
     setRejected([]);
     setTooBig([]);
@@ -103,8 +113,15 @@ export function UploadPreview({
     if (input.current) input.current.value = "";
   }
 
-  async function start() {
-    if (!media || media.length === 0) return;
+  /**
+   * Uploads some of the selection, keeping what earlier attempts established.
+   *
+   * `filedUnder` is the whole selection's span rather than this run's. It only
+   * matters on a retry: three photos out of fifty belong to the trip the fifty
+   * drew, not to the narrower one the three would draw on their own.
+   */
+  async function run(items: MediaFile[], filedUnder?: DateSpan) {
+    if (items.length === 0) return;
 
     // Unreachable in practice — the uploader only renders once connected — but
     // the alternative to checking is uploading into an unknown folder.
@@ -116,24 +133,33 @@ export function UploadPreview({
     const controller = new AbortController();
     abort.current = controller;
 
+    const settled = new Map(lastProgress.current?.states ?? []);
+    const knownFolder = lastProgress.current?.folder ?? null;
+
     setUploading(true);
     setProblem(null);
 
     try {
       await uploadBatch(getToken, {
-        media,
+        media: items,
         place,
         slug,
         rootId,
+        span: filedUnder,
         signal: controller.signal,
         onProgress: (next) => {
-          lastProgress.current = next;
-          setProgress(next);
+          const merged: Progress = {
+            folder: next.folder ?? knownFolder,
+            states: new Map([...settled, ...next.states]),
+          };
+          lastProgress.current = merged;
+          setProgress(merged);
         },
       });
 
-      const added = [...(lastProgress.current?.states.values() ?? [])].some(
-        (state) => state.status === "done",
+      const added = items.some(
+        (item) =>
+          lastProgress.current?.states.get(itemKey(item))?.status === "done",
       );
       // Only when something actually landed: a batch of duplicates changes
       // nothing, and refetching an album for no reason is wasted work.
@@ -153,6 +179,11 @@ export function UploadPreview({
 
   const counts = tally(states);
   const finished = progress !== null && !uploading;
+
+  // Anything the run did not put in Drive: the outright failures, and whatever
+  // a cancelled or broken batch never reached. Files already there are left
+  // out, so a retry is never a second upload of the same bytes.
+  const unfinished = finished ? (media ?? []).filter(isUnfinished(states)) : [];
 
   const batchBytes = totalBytes(media ?? []);
   const verdict = quotaVerdict(quota, batchBytes);
@@ -242,7 +273,7 @@ export function UploadPreview({
             {!progress && (
               <button
                 type="button"
-                onClick={start}
+                onClick={() => void run(media)}
                 disabled={!span || uploading || verdict.kind === "full"}
                 className="t-display cursor-pointer rounded-sm bg-accent px-5 py-3 font-semibold text-accent-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -261,11 +292,26 @@ export function UploadPreview({
               </button>
             )}
 
+            {unfinished.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void run(unfinished, span ?? undefined)}
+                className="t-display cursor-pointer rounded-sm bg-accent px-5 py-3 font-semibold text-accent-ink transition-opacity hover:opacity-90"
+              >
+                Reintentar {unfinished.length}{" "}
+                {unfinished.length === 1 ? "fichero" : "ficheros"}
+              </button>
+            )}
+
             {finished && (
               <button
                 type="button"
                 onClick={reset}
-                className="t-display cursor-pointer rounded-sm bg-accent px-5 py-3 font-semibold text-accent-ink transition-opacity hover:opacity-90"
+                className={
+                  unfinished.length > 0
+                    ? "t-label cursor-pointer text-ink-soft hover:text-accent hover:underline"
+                    : "t-display cursor-pointer rounded-sm bg-accent px-5 py-3 font-semibold text-accent-ink transition-opacity hover:opacity-90"
+                }
               >
                 Subir más
               </button>
@@ -363,6 +409,20 @@ export function UploadPreview({
   );
 }
 
+/**
+ * Whether a file still has to be uploaded, given what the last run said.
+ *
+ * A file with no state at all counts: that is a batch that threw before it
+ * reached the loop, which leaves the whole selection untouched in Drive.
+ */
+function isUnfinished(states: Map<string, ItemState> | undefined) {
+  return (item: MediaFile) => {
+    const state = states?.get(itemKey(item));
+    if (!state) return true;
+    return state.status !== "done" && state.status !== "duplicate";
+  };
+}
+
 function tally(states: Map<string, ItemState> | undefined) {
   if (!states) return null;
 
@@ -399,8 +459,11 @@ function Row({ item, state }: { item: MediaFile; state?: ItemState }) {
           {item.takenAt ? (
             <>
               {item.takenAt.toLocaleDateString("es")}
+              {item.dateSource === "name" && (
+                <span className="t-label ml-2 text-ink-soft">del nombre</span>
+              )}
               {item.dateSource === "file" && (
-                <span className="t-label ml-2 text-ink-soft">del fichero</span>
+                <span className="t-label ml-2 text-accent">del fichero</span>
               )}
             </>
           ) : (

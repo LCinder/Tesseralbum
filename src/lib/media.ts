@@ -15,7 +15,7 @@ export const MAX_HASH_BYTES = 100 * 1024 * 1024;
 export type Kind = "photo" | "video";
 
 /** Where a value came from, so the interface never fakes precision. */
-export type Provenance = "exif" | "file" | "none";
+export type Provenance = "exif" | "name" | "file" | "none";
 
 export type MediaFile = {
   file: File;
@@ -80,20 +80,87 @@ export function undecodableWarning(mime: string, name: string): string | null {
 }
 
 /**
+ * The capture date a camera wrote into the file name, if it did.
+ *
+ * This matters most for the photos that have no EXIF left. A picture that
+ * came through WhatsApp arrives stripped of its metadata but still called
+ * `IMG-20250929-WA0012.jpg`, and Samsung, Pixel and screenshot names all
+ * carry the same stamp. That is a far better answer than the file's mtime,
+ * which for a forwarded photo is the day you received it.
+ *
+ * A name with no time in it is placed at midday. The point of the date is
+ * which day a photo belongs to, and midday is the hour that stays on that day
+ * whichever way the clock is read.
+ */
+export function dateFromName(name: string): Date | null {
+  // Two shapes: 20250929 and 2025-09-29 / 2025_09_29 / 2025.09.29, each with
+  // an optional time after it. Anchored on non-digits so a longer run of
+  // numbers — a serial, an invoice number — cannot be read as a date. The
+  // trailing `\d{3}` is Pixel, which puts milliseconds on the end.
+  const patterns = [
+    /(?:^|[^0-9])(\d{4})(\d{2})(\d{2})(?:[-_T .]?(\d{2})(\d{2})(\d{2})(?:\d{3})?)?(?![0-9])/g,
+    /(?:^|[^0-9])(\d{4})[-_.](\d{2})[-_.](\d{2})(?:[-_T .]+(\d{2})[-_.:h](\d{2})(?:[-_.:m](\d{2}))?)?(?![0-9])/g,
+  ];
+
+  // Every match, not just the first: a name can carry a serial before the
+  // date it actually wants to be sorted by, and giving up on the first thing
+  // that fails validation would throw the real date away.
+  for (const found of patterns.flatMap((pattern) => [...name.matchAll(pattern)])) {
+    const [, year, month, day, hour, minute, second] = found.map(Number);
+
+    const at = new Date(
+      year,
+      month - 1,
+      day,
+      Number.isNaN(hour) ? 12 : hour,
+      Number.isNaN(minute) ? 0 : minute,
+      Number.isNaN(second) ? 0 : second,
+    );
+
+    // Round-tripping is what rejects 2025-13-45: the Date constructor rolls
+    // an impossible day into the next month rather than refusing it.
+    const real =
+      at.getFullYear() === year &&
+      at.getMonth() === month - 1 &&
+      at.getDate() === day;
+
+    // Digital photography, and nothing dated after tomorrow. A camera with a
+    // flat clock writes 1980, and that is not a date worth sorting by.
+    const plausible = year >= 1990 && at.getTime() < Date.now() + 24 * 60 * 60 * 1000;
+
+    if (real && plausible) return at;
+  }
+
+  return null;
+}
+
+/**
  * Picks the capture date, and says where it came from.
  *
- * `File.lastModified` is a weak substitute: copying a file, syncing it or
- * exporting it all reset it. It is still better than nothing for a video,
- * whose date EXIF does not cover — but the caller has to be able to tell the
- * two apart, which is what `dateSource` is for.
+ * Three sources, in descending order of how much they can be trusted: the
+ * EXIF, the stamp the camera put in the file name, and `File.lastModified`.
+ *
+ * The last is a weak substitute — copying a file, syncing it or exporting it
+ * all reset it — and it is the reason an album comes out shuffled: photos
+ * that kept their EXIF sit at their real dates while forwarded ones sit at
+ * the day they were forwarded. Reading the name first rescues most of those,
+ * because the date is still written on the tin.
+ *
+ * It is still better than nothing for a video, whose date EXIF does not
+ * cover, so it stays as the fallback — and the caller has to be able to tell
+ * the three apart, which is what `dateSource` is for.
  */
 export function pickDate(
   exifDate: unknown,
+  name: string,
   lastModified: number,
 ): { takenAt: Date | null; dateSource: Provenance } {
   if (exifDate instanceof Date && Number.isFinite(exifDate.getTime())) {
     return { takenAt: exifDate, dateSource: "exif" };
   }
+
+  const named = dateFromName(name);
+  if (named) return { takenAt: named, dateSource: "name" };
 
   if (Number.isFinite(lastModified) && lastModified > 0) {
     return { takenAt: new Date(lastModified), dateSource: "file" };
@@ -206,11 +273,17 @@ export async function readMedia(file: File): Promise<MediaFile | null> {
           exif: true,
           gps: true,
           // The whole point is these four; parsing the rest is wasted work.
+          // The two Ref tags are not decoration: they carry the hemisphere,
+          // and exifr needs them in the pick list to give `latitude` and
+          // `longitude` their sign. Without them Dublín came out at +6°,
+          // which is Germany.
           pick: [
             "DateTimeOriginal",
             "CreateDate",
             "GPSLatitude",
             "GPSLongitude",
+            "GPSLatitudeRef",
+            "GPSLongitudeRef",
             "ExifImageWidth",
             "ExifImageHeight",
           ],
@@ -222,6 +295,7 @@ export async function readMedia(file: File): Promise<MediaFile | null> {
 
   const { takenAt, dateSource } = pickDate(
     exif.DateTimeOriginal ?? exif.CreateDate,
+    file.name,
     file.lastModified,
   );
 
@@ -230,11 +304,16 @@ export async function readMedia(file: File): Promise<MediaFile | null> {
   if (kind === "photo" && geoSource === "none") {
     warnings.push("Sin ubicación: se usará la del souvenir.");
   }
+  if (dateSource === "name") {
+    warnings.push(
+      "Sin fecha EXIF; se usa la que lleva el nombre del fichero, que suele ser la buena.",
+    );
+  }
   if (dateSource === "file") {
     warnings.push(
       kind === "video"
         ? "Fecha tomada del fichero: el EXIF no cubre vídeo."
-        : "Sin fecha EXIF; se usa la del fichero, que es menos fiable.",
+        : "Sin fecha EXIF ni en el nombre; se usa la del fichero, que es la fecha en que se guardó y no cuándo se hizo la foto.",
     );
   }
 

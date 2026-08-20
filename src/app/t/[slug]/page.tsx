@@ -2,13 +2,12 @@
 
 import { use } from "react";
 import Link from "next/link";
+import { Album } from "@/components/Album";
 import { SessionGate, Shell } from "@/components/Shell";
-import { UploadPreview } from "@/components/UploadPreview";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
 import { findPlaceBySlug } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
-import { flagOf } from "@/lib/flags";
 
 /**
  * The NFC landing page.
@@ -17,6 +16,10 @@ import { flagOf } from "@/lib/flags";
  * to: access is whatever Drive grants the signed-in account, so scanning is
  * pure navigation. The slug says *which* album to open, and Drive decides
  * whether this person may see it.
+ *
+ * It shows the album itself rather than a link to it. Scanning is already the
+ * gesture that says "open this"; asking for a second one made the chip a
+ * doorway with another door behind it.
  */
 export default function ScanPage({ params }: PageProps<"/t/[slug]">) {
   const { slug } = use(params);
@@ -59,35 +62,8 @@ function Scanned({ slug }: { slug: string }) {
     );
   }
 
-  return (
-    <>
-      <p className="t-label mb-2 text-teal">
-        {flagOf(place.countryCode) && (
-          <span aria-hidden="true" className="mr-1.5">
-            {flagOf(place.countryCode)}
-          </span>
-        )}
-        {place.country}
-      </p>
-
-      <h1 className="t-display mb-3 text-5xl font-bold leading-none sm:text-6xl">
-        {place.city}
-      </h1>
-
-      <p className="mb-10 font-mono text-sm text-ink-soft tabular-nums">
-        {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
-      </p>
-
-      <UploadPreview place={place} slug={place.slug} />
-
-      <p className="mt-10">
-        <Link
-          href={`/place/${place.id}`}
-          className="t-display inline-block rounded-sm bg-accent px-5 py-3 font-semibold text-accent-ink transition-opacity hover:opacity-90"
-        >
-          Ver el álbum de {place.city}
-        </Link>
-      </p>
-    </>
-  );
+  // Open on the uploader: whoever just tapped the souvenir is standing there
+  // with the photos. The chip's own address is not worth repeating to someone
+  // who arrived through it.
+  return <Album key={place.id} place={place} openUpload showChip={false} />;
 }
