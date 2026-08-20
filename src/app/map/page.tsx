@@ -72,8 +72,6 @@ function Atlas() {
         onSelect={setSelected}
       />
 
-      <p className="t-label mt-2 text-ink-soft">Teselas de OpenStreetMap</p>
-
       {selected ? (
         <PlaceCard
           key={selected.id}

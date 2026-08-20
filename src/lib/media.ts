@@ -29,6 +29,8 @@ export type MediaFile = {
   geoSource: "exif" | "none";
   width: number | null;
   height: number | null;
+  /** Videos only, and only when the browser could decode enough to say. */
+  durationSeconds: number | null;
   /** Something the user should know, in their language. */
   warning: string | null;
 };
@@ -130,6 +132,45 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Reads a video's duration by letting the browser open it.
+ *
+ * Only the metadata is needed, so nothing is downloaded twice and no frame is
+ * decoded. Returns null when the codec is one the browser cannot open — an
+ * iPhone HEVC clip in Chrome — which is a real answer, not a failure: the
+ * duration limit simply cannot be enforced there.
+ */
+function readDuration(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+
+    const done = (value: number | null) => {
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      resolve(value);
+    };
+
+    // A codec the browser cannot open would otherwise leave this pending
+    // forever, and with it the whole selection.
+    const timer = setTimeout(() => done(null), 5000);
+
+    video.preload = "metadata";
+    video.muted = true;
+
+    video.addEventListener("loadedmetadata", () => {
+      clearTimeout(timer);
+      done(Number.isFinite(video.duration) ? video.duration : null);
+    });
+    video.addEventListener("error", () => {
+      clearTimeout(timer);
+      done(null);
+    });
+
+    video.src = url;
+  });
+}
+
 async function sha256(file: File): Promise<string | null> {
   if (file.size > MAX_HASH_BYTES) return null;
 
@@ -197,6 +238,8 @@ export async function readMedia(file: File): Promise<MediaFile | null> {
     );
   }
 
+  const durationSeconds = kind === "video" ? await readDuration(file) : null;
+
   const sha = await sha256(file);
   if (!sha) {
     warnings.push(
@@ -215,6 +258,7 @@ export async function readMedia(file: File): Promise<MediaFile | null> {
     geoSource,
     width: numberOrNull(exif.ExifImageWidth),
     height: numberOrNull(exif.ExifImageHeight),
+    durationSeconds,
     warning: warnings.length > 0 ? warnings.join(" ") : null,
   };
 }

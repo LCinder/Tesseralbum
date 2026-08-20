@@ -1,10 +1,19 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SectionLabel } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
 import { ROOT_FOLDER, type Place } from "@/lib/catalog";
+import {
+  applyLimits,
+  formatDuration,
+  quotaVerdict,
+  totalBytes,
+  type Quota,
+  type Rejection,
+} from "@/lib/limits";
 import { formatBytes, readSelection, type MediaFile } from "@/lib/media";
+import { readQuota } from "@/lib/google/drive";
 import { monthLabel, spanOf, tripPath, yearLabel } from "@/lib/trips";
 import {
   itemKey,
@@ -33,10 +42,30 @@ export function UploadPreview({
 
   const [media, setMedia] = useState<MediaFile[] | null>(null);
   const [rejected, setRejected] = useState<string[]>([]);
+  const [tooBig, setTooBig] = useState<Rejection[]>([]);
+  const [quota, setQuota] = useState<Quota | null>(null);
   const [reading, setReading] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [uploading, setUploading] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+
+  // Read once on mount. A failure is not worth surfacing: the quota only
+  // powers a warning, and losing it must not block an upload.
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    void readQuota(getToken, { signal: controller.signal })
+      .then((found) => {
+        if (!cancelled) setQuota(found);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [getToken]);
 
   async function onPick(event: React.ChangeEvent<HTMLInputElement>) {
     const files = [...(event.target.files ?? [])];
@@ -49,9 +78,11 @@ export function UploadPreview({
     setProblem(null);
 
     const result = await readSelection(files);
+    const { accepted, rejected: overLimit } = applyLimits(result.media);
 
-    setMedia(result.media);
+    setMedia(accepted);
     setRejected(result.rejected);
+    setTooBig(overLimit);
     setReading(false);
   }
 
@@ -59,6 +90,7 @@ export function UploadPreview({
     abort.current?.abort();
     setMedia(null);
     setRejected([]);
+    setTooBig([]);
     setProgress(null);
     setProblem(null);
     setUploading(false);
@@ -97,6 +129,9 @@ export function UploadPreview({
 
   const counts = tally(states);
   const finished = progress !== null && !uploading;
+
+  const batchBytes = totalBytes(media ?? []);
+  const verdict = quotaVerdict(quota, batchBytes);
 
   return (
     <>
@@ -166,12 +201,25 @@ export function UploadPreview({
             )}
           </div>
 
+          {verdict.message && !progress && (
+            <p
+              role={verdict.kind === "full" ? "alert" : "status"}
+              className={
+                verdict.kind === "full"
+                  ? "mb-4 border-l-[3px] border-accent bg-accent-bg px-4 py-3 text-[0.95rem]"
+                  : "mb-4 border-l-[3px] border-teal bg-teal-bg px-4 py-3 text-[0.95rem]"
+              }
+            >
+              {verdict.message}
+            </p>
+          )}
+
           <div className="mb-4 flex flex-wrap items-baseline gap-4">
             {!progress && (
               <button
                 type="button"
                 onClick={start}
-                disabled={!span || uploading}
+                disabled={!span || uploading || verdict.kind === "full"}
                 className="t-display cursor-pointer rounded-sm bg-accent px-5 py-3 font-semibold text-accent-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Subir {media.length}{" "}
@@ -266,6 +314,22 @@ export function UploadPreview({
         </p>
       )}
 
+      {tooBig.length > 0 && (
+        <div className="mt-6 border-l-[3px] border-accent bg-accent-bg px-4 py-3">
+          <p className="t-label mb-2 text-accent">
+            {tooBig.length} sin subir por tamaño
+          </p>
+          <ul className="flex flex-col gap-1 text-[0.9rem]">
+            {tooBig.map((item) => (
+              <li key={item.key}>
+                <span className="break-all font-mono text-xs">{item.name}</span>{" "}
+                — {item.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {rejected.length > 0 && (
         <p className="mt-4 text-[0.9rem] text-ink-soft">
           Descartados por no ser foto ni vídeo: {rejected.join(", ")}.
@@ -300,7 +364,11 @@ function Row({ item, state }: { item: MediaFile; state?: ItemState }) {
         <td className="py-2 pr-4">
           <span className="break-all">{item.file.name}</span>
           <span className="t-label ml-2 text-ink-soft">
-            {item.kind === "video" ? "vídeo" : "foto"}
+            {item.kind === "video"
+              ? item.durationSeconds !== null
+                ? formatDuration(item.durationSeconds)
+                : "vídeo"
+              : "foto"}
           </span>
         </td>
         <td className="py-2 pr-4 tabular-nums">

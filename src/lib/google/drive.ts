@@ -511,3 +511,32 @@ export async function writeJson(
 
   return (await response.json()) as DriveFile;
 }
+
+/**
+ * How full the user's Drive is.
+ *
+ * The quota is shared with Gmail and Google Photos, so this is not only about
+ * how many albums fit. `limit` is absent on accounts with unlimited storage,
+ * which is a real answer rather than a failure.
+ */
+export async function readQuota(
+  getToken: TokenSource,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<{ limitBytes: number; usedBytes: number; driveBytes: number } | null> {
+  const url = new URL("https://www.googleapis.com/drive/v3/about");
+  url.searchParams.set("fields", "storageQuota");
+
+  const response = await call(getToken, url.toString(), { signal });
+  const body = (await response.json()) as {
+    storageQuota?: { limit?: string; usage?: string; usageInDrive?: string };
+  };
+
+  const quota = body.storageQuota;
+  if (!quota?.limit) return null;
+
+  return {
+    limitBytes: Number(quota.limit),
+    usedBytes: Number(quota.usage ?? 0),
+    driveBytes: Number(quota.usageInDrive ?? 0),
+  };
+}

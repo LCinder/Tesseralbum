@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import { SectionLabel, SessionGate, Shell } from "@/components/Shell";
+import { StoragePanel } from "@/components/StoragePanel";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
 import type { FolderOutcome, Place, Souvenir } from "@/lib/catalog";
@@ -86,6 +87,10 @@ function Registry() {
           />
         ))}
       </ul>
+
+      <div className="mt-12">
+        <StoragePanel />
+      </div>
     </>
   );
 }
