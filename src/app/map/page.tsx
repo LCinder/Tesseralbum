@@ -7,14 +7,13 @@ import { MapView } from "@/components/MapView";
 import { SectionLabel, SessionGate, Shell } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
+import { sortedPlaces, type Place } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
-import { listAllMedia } from "@/lib/google/drive";
-import {
-  filterByYear,
-  yearsOf,
-  type Cluster,
-  type Pin,
-} from "@/lib/map";
+import { listByPlace } from "@/lib/google/drive";
+import { countriesOf, type Preview } from "@/lib/map";
+
+/** How many photos a pin previews before you commit to opening the album. */
+const PREVIEW_COUNT = 3;
 
 export default function MapPage() {
   if (!isConfigured()) return <SetupNeeded />;
@@ -29,122 +28,31 @@ export default function MapPage() {
 }
 
 function Atlas() {
-  const { getToken, catalog } = useSession();
+  const { catalog } = useSession();
+  const [selected, setSelected] = useState<Place | null>(null);
 
-  const [pins, setPins] = useState<Pin[] | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [year, setYear] = useState<number | null>(null);
-  const [selected, setSelected] = useState<Cluster | null>(null);
-  const [withoutCoords, setWithoutCoords] = useState(0);
+  if (!catalog) return null;
 
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
+  const places = sortedPlaces(catalog);
 
-    (async () => {
-      try {
-        const files = await listAllMedia(getToken, {
-          signal: controller.signal,
-        });
-        if (cancelled) return;
-
-        const usable: Pin[] = [];
-        let skipped = 0;
-
-        for (const file of files) {
-          const properties = file.appProperties ?? {};
-          const lat = Number(properties.lat);
-          const lng = Number(properties.lng);
-
-          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-            skipped += 1;
-            continue;
-          }
-
-          const takenAt = properties.takenAt
-            ? new Date(properties.takenAt)
-            : null;
-
-          usable.push({
-            id: file.id,
-            name: file.name,
-            lat,
-            lng,
-            geoSource: properties.geoSource ?? "none",
-            takenAt:
-              takenAt && Number.isFinite(takenAt.getTime()) ? takenAt : null,
-            placeId: properties.placeId ?? null,
-            thumbnailLink: file.thumbnailLink,
-            mimeType: file.mimeType,
-          });
-        }
-
-        setPins(usable);
-        setWithoutCoords(skipped);
-        setProblem(null);
-      } catch (cause) {
-        if (cancelled) return;
-        setProblem(
-          cause instanceof Error ? cause.message : "No se pudo leer el mapa.",
-        );
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [getToken]);
-
-  if (problem) {
-    return (
-      <>
-        <h1 className="t-display mb-3 text-4xl font-bold leading-none sm:text-5xl">
-          Mapa
-        </h1>
-        <p
-          role="alert"
-          className="border-l-[3px] border-accent bg-accent-bg px-4 py-3 text-[0.95rem]"
-        >
-          {problem}
-        </p>
-      </>
-    );
-  }
-
-  if (!pins) {
-    return (
-      <>
-        <h1 className="t-display mb-3 text-4xl font-bold leading-none sm:text-5xl">
-          Mapa
-        </h1>
-        <p className="t-label text-ink-soft" role="status">
-          Leyendo tu Drive…
-        </p>
-      </>
-    );
-  }
-
-  if (pins.length === 0) {
+  if (places.length === 0) {
     return (
       <>
         <h1 className="t-display mb-3 text-4xl font-bold leading-none sm:text-5xl">
           Mapa
         </h1>
         <p className="max-w-lg text-lg text-ink-soft">
-          Todavía no hay fotos con ubicación. Sube algunas desde el souvenir de
-          un lugar y aparecerán aquí.{" "}
+          Todavía no hay ningún lugar.{" "}
           <Link href="/" className="text-accent underline">
-            Tus lugares
-          </Link>
+            Da de alta tu primera pegatina
+          </Link>{" "}
+          y aparecerá aquí.
         </p>
       </>
     );
   }
 
-  const years = yearsOf(pins);
-  const showing = filterByYear(pins, year);
-  const approximate = showing.filter((p) => p.geoSource !== "exif").length;
+  const countries = countriesOf(places);
 
   return (
     <>
@@ -153,104 +61,147 @@ function Atlas() {
       </h1>
 
       <p className="mb-6 max-w-lg text-ink-soft">
-        {showing.length} {showing.length === 1 ? "foto" : "fotos"} con
-        ubicación. Los círculos huecos son aproximados: la foto llegó sin GPS y
-        usa las coordenadas de su souvenir.
+        {places.length} {places.length === 1 ? "lugar" : "lugares"} en{" "}
+        {countries.length} {countries.length === 1 ? "país" : "países"}. Pulsa
+        un punto para asomarte, y de ahí al álbum.
       </p>
 
-      {years.length > 1 && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          <YearChip active={year === null} onClick={() => setYear(null)}>
-            Todos
-          </YearChip>
-          {years.map((candidate) => (
-            <YearChip
-              key={candidate}
-              active={year === candidate}
-              onClick={() => setYear(candidate)}
-            >
-              {candidate}
-            </YearChip>
-          ))}
-        </div>
-      )}
+      <MapView
+        places={places}
+        selectedId={selected?.id ?? null}
+        onSelect={setSelected}
+      />
 
-      <MapView pins={showing} onSelect={setSelected} />
+      <p className="t-label mt-2 text-ink-soft">Teselas de OpenStreetMap</p>
 
-      <p className="t-label mt-2 text-ink-soft">
-        {approximate > 0 && <>{approximate} aproximadas · </>}
-        {withoutCoords > 0 && <>{withoutCoords} sin ubicación · </>}
-        Teselas de OpenStreetMap
-      </p>
-
-      {selected && (
-        <div className="mt-8">
-          <SectionLabel>
-            {selected.pins.length}{" "}
-            {selected.pins.length === 1 ? "foto aquí" : "fotos aquí"}
-          </SectionLabel>
-
-          <div className="mb-3 flex items-baseline justify-between gap-4">
-            <p className="font-mono text-xs text-ink-soft tabular-nums">
-              {selected.lat.toFixed(4)}, {selected.lng.toFixed(4)}
-              {selected.approximate && " · aproximado"}
-            </p>
-            <button
-              type="button"
-              onClick={() => setSelected(null)}
-              className="t-label cursor-pointer text-accent hover:underline"
-            >
-              Cerrar
-            </button>
-          </div>
-
-          <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {selected.pins.map((shot) => {
-              const place = catalog?.places.find((p) => p.id === shot.placeId);
-              return (
-                <li key={shot.id}>
-                  <DriveImage
-                    fileId={shot.id}
-                    thumbnailLink={shot.thumbnailLink}
-                    alt={shot.name}
-                    className="aspect-square w-full bg-surface-2 object-cover"
-                  />
-                  <p className="t-label mt-1 truncate text-ink-soft">
-                    {shot.takenAt
-                      ? shot.takenAt.toLocaleDateString("es")
-                      : place?.city ?? shot.name}
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+      {selected ? (
+        <PlaceCard
+          key={selected.id}
+          place={selected}
+          onClose={() => setSelected(null)}
+        />
+      ) : (
+        <p className="mt-6 text-[0.95rem] text-ink-soft">
+          {countries.join(" · ")}
+        </p>
       )}
     </>
   );
 }
 
-function YearChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+/**
+ * The peek at a place: a few photos and a way into its album.
+ *
+ * Fetched on selection rather than up front, so opening the map costs one
+ * catalogue read that is already in memory — not a sweep of every photo in
+ * every country.
+ */
+function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
+  const { getToken } = useSession();
+  // Remounted per place via a key, so this starts empty on every selection
+  // without an effect having to reset it.
+  const [previews, setPreviews] = useState<Preview[] | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const files = await listByPlace(getToken, place.id, {
+          limit: PREVIEW_COUNT,
+          signal: controller.signal,
+        });
+        if (cancelled) return;
+
+        setPreviews(
+          files.map((file) => ({
+            id: file.id,
+            name: file.name,
+            thumbnailLink: file.thumbnailLink,
+            mimeType: file.mimeType,
+          })),
+        );
+      } catch (cause) {
+        if (cancelled) return;
+        setProblem(
+          cause instanceof Error
+            ? cause.message
+            : "No se pudieron leer las fotos.",
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [getToken, place.id]);
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`t-label cursor-pointer border px-3 py-1.5 tabular-nums transition-colors ${
-        active
-          ? "border-accent bg-accent text-accent-ink"
-          : "border-rule text-ink-soft hover:border-accent hover:text-accent"
-      }`}
-    >
-      {children}
-    </button>
+    <div className="mt-8">
+      <SectionLabel>{place.country}</SectionLabel>
+
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+        <h2 className="t-display text-2xl font-bold">{place.city}</h2>
+        <div className="flex items-baseline gap-4">
+          <Link
+            href={`/place/${place.id}`}
+            className="t-label text-accent hover:underline"
+          >
+            Ver álbum
+          </Link>
+          <button
+            type="button"
+            onClick={onClose}
+            className="t-label cursor-pointer text-ink-soft hover:underline"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+
+      {problem && (
+        <p role="alert" className="text-sm text-accent">
+          {problem}
+        </p>
+      )}
+
+      {!problem && previews === null && (
+        <div className="grid grid-cols-3 gap-2">
+          {Array.from({ length: PREVIEW_COUNT }, (_, i) => (
+            <div
+              key={i}
+              className="aspect-square w-full animate-pulse bg-surface-2"
+            />
+          ))}
+        </div>
+      )}
+
+      {previews?.length === 0 && (
+        <p className="text-ink-soft">
+          Ninguna foto todavía. Escanea el souvenir de {place.city} para subir
+          las primeras.
+        </p>
+      )}
+
+      {previews && previews.length > 0 && (
+        <Link href={`/place/${place.id}`} className="block">
+          <ul className="grid grid-cols-3 gap-2">
+            {previews.map((preview) => (
+              <li key={preview.id}>
+                <DriveImage
+                  fileId={preview.id}
+                  thumbnailLink={preview.thumbnailLink}
+                  alt={preview.name}
+                  className="aspect-square w-full bg-surface-2 object-cover"
+                />
+              </li>
+            ))}
+          </ul>
+        </Link>
+      )}
+    </div>
   );
 }

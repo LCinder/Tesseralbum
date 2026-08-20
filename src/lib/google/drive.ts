@@ -221,47 +221,33 @@ export async function listChildren(
 }
 
 /**
- * Every media file the app has ever created, in one paginated sweep.
+ * A handful of photos from one place, for a preview.
  *
- * No parent constraint is needed, and that is the quiet advantage of the
- * `drive.file` scope: it already limits the result to our own files, so
- * "everything we uploaded" is a single query instead of a walk down the folder
- * tree. A map over the whole archive needs exactly this.
- *
- * Page tokens are still sequential, so cost grows with the archive: roughly
- * one round trip per hundred files.
+ * One small query per place instead of listing the whole archive and grouping
+ * it client-side. These are independent, so a caller can run them in parallel
+ * — unlike the page tokens of a full listing, which are sequential.
  */
-export async function listAllMedia(
+export async function listByPlace(
   getToken: TokenSource,
-  { signal }: { signal?: AbortSignal } = {},
+  placeId: string,
+  { limit = 3, signal }: { limit?: number; signal?: AbortSignal } = {},
 ): Promise<DriveFile[]> {
-  const files: DriveFile[] = [];
-  let pageToken: string | undefined;
+  const url = new URL(FILES);
+  url.searchParams.set(
+    "q",
+    `appProperties has { key='placeId' and value=${quote(placeId)} } and mimeType != ${quote(FOLDER_MIME)} and trashed = false`,
+  );
+  url.searchParams.set("fields", `files(${MEDIA_FIELDS})`);
+  url.searchParams.set("pageSize", String(limit));
+  // Newest first, so a preview shows the most recent trip rather than whatever
+  // Drive happens to return.
+  url.searchParams.set("orderBy", "createdTime desc");
+  url.searchParams.set("supportsAllDrives", "true");
+  url.searchParams.set("includeItemsFromAllDrives", "true");
 
-  do {
-    const url = new URL(FILES);
-    url.searchParams.set(
-      "q",
-      `mimeType != ${quote(FOLDER_MIME)} and trashed = false`,
-    );
-    url.searchParams.set("fields", `nextPageToken, files(${MEDIA_FIELDS})`);
-    url.searchParams.set("pageSize", "100");
-    url.searchParams.set("supportsAllDrives", "true");
-    url.searchParams.set("includeItemsFromAllDrives", "true");
-    if (pageToken) url.searchParams.set("pageToken", pageToken);
-
-    const response = await call(getToken, url.toString(), { signal });
-    const body = (await response.json()) as {
-      files?: DriveFile[];
-      nextPageToken?: string;
-    };
-
-    files.push(...(body.files ?? []));
-    pageToken = body.nextPageToken;
-  } while (pageToken);
-
-  // souvenirs.json lives in the same scope and is not a photo.
-  return files.filter((file) => file.mimeType !== "application/json");
+  const response = await call(getToken, url.toString(), { signal });
+  const body = (await response.json()) as { files?: DriveFile[] };
+  return body.files ?? [];
 }
 
 /** Finds a file the app uploaded earlier with this exact content hash. */
