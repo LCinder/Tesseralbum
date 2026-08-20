@@ -132,7 +132,7 @@ Un registro NDEF de tipo URI con esa URL. Cabe de sobra en un NTAG213.
 |---|---|
 | `npm run dev` | Servidor de desarrollo |
 | `npm run build` | Build de producción |
-| `npm test` | 142 tests de la lógica pura |
+| `npm test` | 150 tests de la lógica pura |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 
@@ -171,6 +171,7 @@ src/
     upload.ts                orquestación de la subida
     gallery.ts               lectura del álbum
     cache.ts                 miniaturas en IndexedDB
+    memo.ts                  listados en memoria por sesión      ← tests
     notes.ts                 notas.md por viaje
 docs/
   postgres-index-phase5.sql  esquema guardado por si el mapa pesa
@@ -178,7 +179,7 @@ docs/
 
 ## Estado de verificación
 
-Comprobado automáticamente en cada cambio: **142 tests**, typecheck, lint y
+Comprobado automáticamente en cada cambio: **150 tests**, typecheck, lint y
 build.
 
 Comprobado a mano contra Google: consentimiento, creación de carpetas,

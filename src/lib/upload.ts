@@ -12,6 +12,7 @@ import {
   type TokenSource,
 } from "@/lib/google/drive";
 import type { MediaFile } from "@/lib/media";
+import { forget } from "@/lib/memo";
 import {
   belongsToSameTrip,
   disambiguate,
@@ -245,6 +246,14 @@ export async function uploadBatch(
       "Ninguna de las fotos tiene fecha, así que no se puede decidir la carpeta del viaje.",
     );
   }
+
+  // Whatever this batch does, the cached listings are about to be wrong.
+  // Forgetting up front rather than at the end covers a cancelled or failed
+  // run too, which may still have uploaded some of the files.
+  forget(`place:${place.id}`);
+  forget(`preview:${place.id}`);
+  forget("folders");
+  forget("everything");
 
   const states = new Map<string, ItemState>(
     media.map((item) => [itemKey(item), { status: "pending" } as ItemState]),

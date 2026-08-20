@@ -11,6 +11,7 @@ import { sortedPlaces, type Place } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
 import { flagOf } from "@/lib/flags";
 import { listByPlace } from "@/lib/google/drive";
+import { memo } from "@/lib/memo";
 import { countriesOf, type Preview } from "@/lib/map";
 
 /** How many photos a pin previews before you commit to opening the album. */
@@ -108,10 +109,13 @@ function PlaceCard({ place, onClose }: { place: Place; onClose: () => void }) {
 
     (async () => {
       try {
-        const files = await listByPlace(getToken, place.id, {
-          limit: PREVIEW_COUNT,
-          signal: controller.signal,
-        });
+        // Clicking the same pin twice should not cost twice.
+        const files = await memo(`preview:${place.id}`, () =>
+          listByPlace(getToken, place.id, {
+            limit: PREVIEW_COUNT,
+            signal: controller.signal,
+          }),
+        );
         if (cancelled) return;
 
         setPreviews(

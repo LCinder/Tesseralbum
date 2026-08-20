@@ -9,20 +9,35 @@ import { readThumb, writeThumb } from "@/lib/cache";
 import { downloadBlob } from "@/lib/google/drive";
 
 /**
- * Shows a private Drive image, with three paths in order of cost.
+ * Shows a private Drive image, trying the cheapest source first.
  *
- * 1. IndexedDB, if this file was fetched before. Free and instant.
- * 2. Our own 400 px copy, made at upload time. A few tens of kilobytes over an
- *    API we control, so it neither expires nor depends on another host.
- * 3. Google's `thumbnailLink`, for anything uploaded before we made our own.
- * 4. The Drive API on the original. Always works, at the price of the whole
- *    file, which is why it is last.
+ * The order is driven by quota, not by convenience. Drive meters *API methods*:
+ * a download is 200 units where a whole list is 100, so on a fifty-photo album
+ * the images cost fifty times what finding them did. Anything that avoids a
+ * metered download is worth trying first even if it sometimes fails.
  *
- * Whatever ends up on screen from paths 2 and 3 is written back to the cache,
- * so the second visit to an album costs nothing.
+ * 1. **IndexedDB.** Free, instant, and covers every repeat visit for 30 days.
+ * 2. **Google's `thumbnailLink`.** Served from a CDN host, so no Drive API
+ *    method is invoked and no quota is spent. It expires after hours and needs
+ *    the browser's Google session, which is exactly why it is a *try*, not a
+ *    plan — but when it works it is free, and it usually works.
+ * 3. **Our own 400 px copy.** A metered download, but of tens of kilobytes,
+ *    and it never expires. This is what makes the chain reliable.
+ * 4. **The original.** A metered download of the whole file, for anything
+ *    uploaded before we started making thumbnails.
+ *
+ * Whatever reaches the screen is written back to the cache, so the second view
+ * of an album costs nothing at all.
  */
 
-type Stage = "checking" | "own" | "google" | "downloading" | "blob" | "failed";
+type Stage = "checking" | "cdn" | "own" | "original" | "blob" | "failed";
+
+/** The next source to try when the current one comes up empty. */
+function after(current: Stage, hasOwn: boolean): Stage {
+  if (current === "cdn") return hasOwn ? "own" : "original";
+  if (current === "own") return "original";
+  return "failed";
+}
 
 export function DriveImage({
   fileId,
@@ -59,8 +74,6 @@ export function DriveImage({
     };
   }, []);
 
-  // Look in the cache first, then fall through to whichever network path is
-  // available.
   useEffect(() => {
     if (stage !== "checking") return;
     let cancelled = false;
@@ -70,9 +83,9 @@ export function DriveImage({
       if (cancelled) return;
 
       if (cached) show(cached);
+      else if (thumbnailLink) setStage("cdn");
       else if (thumbId) setStage("own");
-      else if (thumbnailLink) setStage("google");
-      else setStage("downloading");
+      else setStage("original");
     })();
 
     return () => {
@@ -80,10 +93,9 @@ export function DriveImage({
     };
   }, [stage, fileId, thumbId, thumbnailLink]);
 
-  // Our own thumbnail, then the original as a last resort. Both are downloads
-  // through the Drive API, so they share one effect.
+  // The two metered paths, which are the same request against different ids.
   useEffect(() => {
-    if (stage !== "own" && stage !== "downloading") return;
+    if (stage !== "own" && stage !== "original") return;
 
     const target = stage === "own" ? (thumbId as string) : fileId;
     const controller = new AbortController();
@@ -99,16 +111,12 @@ export function DriveImage({
         // Best effort: a failed write costs a re-download, not an error.
         void writeThumb(fileId, blob);
       } catch {
-        if (controller.signal.aborted) return;
-        // A thumbnail that has gone missing — deleted from Drive by hand —
-        // must not lose the photo; fall through to whatever is left.
-        if (stage !== "own") setStage("failed");
-        else setStage(thumbnailLink ? "google" : "downloading");
+        if (!controller.signal.aborted) setStage(after(stage, Boolean(thumbId)));
       }
     })();
 
     return () => controller.abort();
-  }, [stage, fileId, thumbId, thumbnailLink, getToken]);
+  }, [stage, fileId, thumbId, getToken]);
 
   if (stage === "failed") {
     return (
@@ -122,7 +130,7 @@ export function DriveImage({
     );
   }
 
-  if (stage === "checking" || stage === "own" || stage === "downloading") {
+  if (stage === "checking" || stage === "own" || stage === "original") {
     return (
       <div
         className={`animate-pulse bg-surface-2 ${className ?? ""}`}
@@ -137,14 +145,14 @@ export function DriveImage({
       alt={alt}
       loading="lazy"
       decoding="async"
-      // Falling through to the authenticated download is the whole point: an
-      // expired or refused thumbnail link must not leave a broken image.
-      onError={() => setStage(stage === "google" ? "downloading" : "failed")}
-      // A thumbnail that loaded is worth keeping; caching it here is what makes
-      // the next visit instant. It is fetched again as a blob because an <img>
-      // does not hand over its bytes — cheap, since the browser has it cached.
+      // An expired or refused CDN link must not leave a broken image; falling
+      // through to a metered download is the price of the free attempt.
+      onError={() => setStage(after(stage, Boolean(thumbId)))}
+      // A CDN thumbnail that loaded is worth keeping, because caching it is
+      // what makes the next visit free. Re-fetching it costs no quota and the
+      // browser already has it, so this is nearly instant.
       onLoad={() => {
-        if (stage !== "google") return;
+        if (stage !== "cdn") return;
         const link = sized(thumbnailLink);
         if (!link) return;
 

@@ -7,6 +7,7 @@ import { useSession } from "@/components/SessionProvider";
 import { anniversariesOn, yearsAgoLabel } from "@/lib/anniversary";
 import type { Place } from "@/lib/catalog";
 import { listByPlace, listEverything } from "@/lib/google/drive";
+import { memo } from "@/lib/memo";
 import { tripsFromListing } from "@/lib/passport";
 import type { Preview } from "@/lib/map";
 import { loadAnniversary, saveAnniversary } from "@/lib/session-store";
@@ -59,9 +60,11 @@ export function AnniversaryCard({ places }: { places: Place[] }) {
       }
 
       try {
-        const { folders, media } = await listEverything(getToken, {
-          signal: controller.signal,
-        });
+        // The same key the passport uses: whichever runs first pays, and the
+        // other gets it free.
+        const { folders, media } = await memo("everything", () =>
+          listEverything(getToken, { signal: controller.signal }),
+        );
         if (cancelled) return;
 
         const [anniversary] = anniversariesOn(
@@ -77,10 +80,12 @@ export function AnniversaryCard({ places }: { places: Place[] }) {
         const place = places.find((p) => p.id === anniversary.trip.placeId);
         if (!place) return;
 
-        const previews = await listByPlace(getToken, place.id, {
-          limit: 3,
-          signal: controller.signal,
-        });
+        const previews = await memo(`preview:${place.id}`, () =>
+          listByPlace(getToken, place.id, {
+            limit: 3,
+            signal: controller.signal,
+          }),
+        );
         if (cancelled) return;
 
         const memory: Memory = {

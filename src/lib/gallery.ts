@@ -5,6 +5,7 @@ import {
   type DriveFile,
   type TokenSource,
 } from "@/lib/google/drive";
+import { memo } from "@/lib/memo";
 import { spanFromProperties, type DateSpan } from "@/lib/trips";
 
 /**
@@ -74,9 +75,12 @@ export async function listTrips(
   getToken: TokenSource,
   place: Place,
 ): Promise<Trip[]> {
+  // Memoised so navigating away and back does not re-list what has not
+  // changed. The folder listing is shared with every other place, which is
+  // why it gets its own key.
   const [files, folders] = await Promise.all([
-    listByPlace(getToken, place.id),
-    listAllFolders(getToken),
+    memo(`place:${place.id}`, () => listByPlace(getToken, place.id)),
+    memo("folders", () => listAllFolders(getToken)),
   ]);
 
   if (files.length === 0) return [];

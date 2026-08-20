@@ -8,6 +8,7 @@ import { SetupNeeded } from "@/components/SetupNeeded";
 import { sortedPlaces } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
 import { listEverything } from "@/lib/google/drive";
+import { memo } from "@/lib/memo";
 import {
   buildPassport,
   flagOf,
@@ -42,9 +43,9 @@ function Record() {
 
     (async () => {
       try {
-        const { folders, media } = await listEverything(getToken, {
-          signal: controller.signal,
-        });
+        const { folders, media } = await memo("everything", () =>
+          listEverything(getToken, { signal: controller.signal }),
+        );
         if (cancelled) return;
 
         setPassport(

@@ -7,6 +7,7 @@ import {
   writeJson,
   type TokenSource,
 } from "@/lib/google/drive";
+import { forget } from "@/lib/memo";
 
 /**
  * The catalogue: the places you have chips for.
@@ -337,6 +338,12 @@ export async function removePlace(
   if (!result) throw new Error("Ese lugar ya no está en el catálogo.");
 
   const { catalog, removed, countryStillUsed } = result;
+
+  // A deleted place changes what the folder and archive listings should say.
+  forget(`place:${id}`);
+  forget(`preview:${id}`);
+  forget("folders");
+  forget("everything");
 
   // The catalogue goes first: if the folder step fails, the place is still
   // gone and a retry is harmless, rather than the reverse.
