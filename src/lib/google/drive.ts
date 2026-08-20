@@ -138,15 +138,23 @@ export async function createFolder(
     getToken: TokenSource,
     parentId: string,
     name: string,
+    // Set at creation rather than patched on afterwards: a trip folder needs
+    // its dates, and doing it in two steps costs a request every time.
+    appProperties?: Record<string, string>,
 ): Promise<DriveFile> {
     const url = new URL(FILES);
-    url.searchParams.set("fields", "id,name,mimeType");
+    url.searchParams.set("fields", "id,name,mimeType,appProperties");
     url.searchParams.set("supportsAllDrives", "true");
 
     const response = await call(getToken, url.toString(), {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name, mimeType: FOLDER_MIME, parents: [parentId]}),
+        body: JSON.stringify({
+            name,
+            mimeType: FOLDER_MIME,
+            parents: [parentId],
+            appProperties,
+        }),
     });
 
     return (await response.json()) as DriveFile;

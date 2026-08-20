@@ -39,7 +39,7 @@ export function UploadPreview({
   /** Called once a batch put at least one new file in Drive. */
   onUploaded?: () => void;
 }) {
-  const { getToken } = useSession();
+  const { getToken, rootId } = useSession();
   const input = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
   // The last progress seen, so the finished batch can be inspected without
@@ -106,6 +106,13 @@ export function UploadPreview({
   async function start() {
     if (!media || media.length === 0) return;
 
+    // Unreachable in practice — the uploader only renders once connected — but
+    // the alternative to checking is uploading into an unknown folder.
+    if (!rootId) {
+      setProblem("Todavía no hay conexión con Drive. Espera un momento.");
+      return;
+    }
+
     const controller = new AbortController();
     abort.current = controller;
 
@@ -117,6 +124,7 @@ export function UploadPreview({
         media,
         place,
         slug,
+        rootId,
         signal: controller.signal,
         onProgress: (next) => {
           lastProgress.current = next;

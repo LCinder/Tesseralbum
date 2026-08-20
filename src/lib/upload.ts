@@ -1,4 +1,4 @@
-import { ROOT_FOLDER, THUMBS_FOLDER, type Place } from "@/lib/catalog";
+import { THUMBS_FOLDER, type Place } from "@/lib/catalog";
 import { makeThumbnail, thumbName } from "@/lib/thumbnail";
 import {
   createFolder,
@@ -54,12 +54,15 @@ export async function resolveTripFolder(
   getToken: TokenSource,
   place: Place,
   span: DateSpan,
+  rootId: string,
 ): Promise<TripFolder> {
-  const yearId = await ensurePath(getToken, [
-    ROOT_FOLDER,
-    place.country,
-    yearLabel(span),
-  ]);
+  // Starting from the known root: the catalogue already resolved it when the
+  // session opened, and looking it up again is a wasted request every batch.
+  const yearId = await ensurePath(
+    getToken,
+    [place.country, yearLabel(span)],
+    { from: rootId },
+  );
 
   const siblings = await listChildren(getToken, yearId, { foldersOnly: true });
 
@@ -93,9 +96,18 @@ export async function resolveTripFolder(
       };
     }
 
-    await update(getToken, sibling.id, {
-      appProperties: spanToProperties(widened),
-    });
+    // Only when the batch actually reached outside what the folder already
+    // covered. Uploading the middle of a trip you have already filed changes
+    // nothing, and writing the same dates back costs a request to say so.
+    const grew =
+      widened.from.getTime() !== existing.from.getTime() ||
+      widened.to.getTime() !== existing.to.getTime();
+
+    if (grew) {
+      await update(getToken, sibling.id, {
+        appProperties: spanToProperties(widened),
+      });
+    }
 
     return { id: sibling.id, name: sibling.name, span: widened, reused: true };
   }
@@ -105,10 +117,14 @@ export async function resolveTripFolder(
     siblings.map((sibling) => sibling.name),
   );
 
-  const created = await createFolder(getToken, yearId, name);
-  await update(getToken, created.id, {
-    appProperties: spanToProperties(span),
-  });
+  // Dates set at creation rather than patched on after: two steps for one
+  // folder, every new trip.
+  const created = await createFolder(
+    getToken,
+    yearId,
+    name,
+    spanToProperties(span),
+  );
 
   return { id: created.id, name, span, reused: false };
 }
@@ -200,9 +216,10 @@ async function makeAndStoreThumbnail(
 /**
  * Uploads a batch, reporting after every step.
  *
- * One file at a time on purpose: parallel uploads would race on the folder
- * rename and give Drive several concurrent sessions to shepherd, for a gain
- * nobody notices on a home connection.
+ * One file at a time. Nothing forces this any more — the folder is resolved
+ * once before the loop, so there is no rename left to race on — but running
+ * several at once buys wall-clock time, not fewer requests, and costs a much
+ * fiddlier progress and cancel story.
  */
 export async function uploadBatch(
   getToken: TokenSource,
@@ -210,12 +227,14 @@ export async function uploadBatch(
     media,
     place,
     slug,
+    rootId,
     onProgress,
     signal,
   }: {
     media: MediaFile[];
     place: Place;
     slug: string;
+    rootId: string;
     onProgress: (progress: Progress) => void;
     signal?: AbortSignal;
   },
@@ -236,14 +255,14 @@ export async function uploadBatch(
 
   report(null);
 
-  const folder = await resolveTripFolder(getToken, place, span);
+  const folder = await resolveTripFolder(getToken, place, span, rootId);
   report(folder);
 
   // Resolved once for the batch. If it cannot be created the upload still goes
   // ahead — thumbnails are an optimisation, not a requirement.
   let thumbsId: string | null = null;
   try {
-    thumbsId = await ensurePath(getToken, [ROOT_FOLDER, THUMBS_FOLDER]);
+    thumbsId = await ensurePath(getToken, [THUMBS_FOLDER], { from: rootId });
   } catch {
     thumbsId = null;
   }

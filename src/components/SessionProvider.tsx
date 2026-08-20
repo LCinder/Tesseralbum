@@ -52,6 +52,8 @@ type Session = {
   status: Status;
   error: string | null;
   catalog: Catalog | null;
+  /** The app folder in Drive, already resolved. Saves looking it up again. */
+  rootId: string | null;
   /** True while the catalogue on screen came from storage, not from Drive. */
   stale: boolean;
   connect: () => Promise<void>;
@@ -241,6 +243,7 @@ export function SessionProvider({
         status,
         error,
         catalog: handle?.catalog ?? null,
+        rootId: handle?.rootId ?? null,
         stale,
         connect,
         disconnect,
