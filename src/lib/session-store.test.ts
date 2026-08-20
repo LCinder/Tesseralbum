@@ -28,21 +28,16 @@ import {
 } from "./session-store";
 
 const CATALOG = {
-  version: 1 as const,
+  version: 2 as const,
   places: [
     {
       id: "kioto-japon",
+      slug: "k7f3xqm2bd",
       city: "Kioto",
       country: "Japón",
       countryCode: "JP",
       lat: 35.0116,
       lng: 135.7681,
-    },
-  ],
-  souvenirs: [
-    {
-      slug: "k7f3xqm2bd",
-      placeId: "kioto-japon",
       active: true,
       createdAt: "2026-08-20T10:00:00.000Z",
     },
@@ -133,8 +128,8 @@ test("a catalogue with the wrong shape is refused", () => {
   // Rendering half a catalogue would crash the page it was meant to speed up.
   for (const junk of [
     "{{{",
-    JSON.stringify({ rootId: "r", catalog: { places: "no", souvenirs: [] }, storedAt: Date.now() }),
-    JSON.stringify({ rootId: "r", catalog: { places: [] }, storedAt: Date.now() }),
+    JSON.stringify({ rootId: "r", catalog: { places: "no" }, storedAt: Date.now() }),
+    JSON.stringify({ rootId: "r", storedAt: Date.now() }),
     JSON.stringify({ catalog: CATALOG, storedAt: Date.now() }),
     JSON.stringify({ rootId: "r", catalog: CATALOG }),
   ]) {

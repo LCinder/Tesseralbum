@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { DriveImage } from "@/components/DriveImage";
 import { SectionLabel } from "@/components/Shell";
-import { TripNotes } from "@/components/TripNotes";
 import { useSession } from "@/components/SessionProvider";
+import { TripNotes } from "@/components/TripNotes";
 import { ROOT_FOLDER, type Place } from "@/lib/catalog";
 import {
   isDisplayable,
@@ -15,17 +15,17 @@ import {
 } from "@/lib/gallery";
 
 /**
- * The album for one place, grouped by the trips Drive already holds.
+ * The album for one place: the trips first, the photos second.
  *
- * Reading is a walk down the folder tree — country, year, trip, files — and
- * the page tokens are sequential, so this gets slower as the archive grows.
- * That is the crossover where a local index earns its place; for now the
- * simple thing is the right thing.
+ * Going back to a city is common, and pouring every visit into one grid mixes
+ * them — a wall where 2024 and 2026 sit side by side with nothing marking the
+ * seam. The trips are the index; a photo grid opens inside one.
  */
 export function Gallery({ place }: { place: Place }) {
   const { getToken } = useSession();
   const [trips, setTrips] = useState<Trip[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   // Bumping this re-runs the effect, which is how "Reintentar" works without
   // a second code path that could drift from the first.
@@ -43,6 +43,8 @@ export function Gallery({ place }: { place: Place }) {
         if (cancelled) return;
         setTrips(found);
         setProblem(null);
+        // One trip is not a choice worth making the reader click through.
+        if (found.length === 1) setOpenId(found[0].folderId);
       } catch (cause) {
         if (cancelled) return;
         setProblem(
@@ -59,13 +61,14 @@ export function Gallery({ place }: { place: Place }) {
   const retry = () => {
     setTrips(null);
     setProblem(null);
+    setOpenId(null);
     setAttempt((n) => n + 1);
   };
 
   if (problem) {
     return (
       <>
-        <SectionLabel>Fotos</SectionLabel>
+        <SectionLabel>Viajes</SectionLabel>
         <p
           role="alert"
           className="mb-4 border-l-[3px] border-accent bg-accent-bg px-4 py-3 text-[0.95rem]"
@@ -86,7 +89,7 @@ export function Gallery({ place }: { place: Place }) {
   if (!trips) {
     return (
       <>
-        <SectionLabel>Fotos</SectionLabel>
+        <SectionLabel>Viajes</SectionLabel>
         <p className="t-label text-ink-soft" role="status">
           Leyendo tu Drive…
         </p>
@@ -97,10 +100,10 @@ export function Gallery({ place }: { place: Place }) {
   if (trips.length === 0) {
     return (
       <>
-        <SectionLabel>Fotos</SectionLabel>
+        <SectionLabel>Viajes</SectionLabel>
         <p className="mb-10 max-w-lg text-ink-soft">
-          Todavía ninguna. Escanea el souvenir de {place.city} y sube las
-          primeras — irán a{" "}
+          Todavía ninguno. Escanea el chip de {place.city} y sube las primeras
+          fotos — irán a{" "}
           <code className="font-mono text-sm">
             {ROOT_FOLDER}/{place.country}/
           </code>{" "}
@@ -110,39 +113,109 @@ export function Gallery({ place }: { place: Place }) {
     );
   }
 
+  const open = trips.find((trip) => trip.folderId === openId) ?? null;
+
+  if (open) {
+    return (
+      <OpenTrip
+        trip={open}
+        // Only offer a way back when there is somewhere to go back to.
+        onBack={trips.length > 1 ? () => setOpenId(null) : undefined}
+      />
+    );
+  }
+
   const total = trips.reduce((sum, trip) => sum + trip.shots.length, 0);
 
   return (
     <>
       <SectionLabel>
-        {total} {total === 1 ? "foto" : "fotos"} · {trips.length}{" "}
-        {trips.length === 1 ? "viaje" : "viajes"}
+        {trips.length} {trips.length === 1 ? "viaje" : "viajes"} · {total}{" "}
+        {total === 1 ? "foto" : "fotos"}
       </SectionLabel>
 
-      {trips.map((trip) => (
-        <section key={trip.folderId} className="mb-10">
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4">
-            <h2 className="t-display text-lg font-semibold">
-              {trip.name}
-              <span className="ml-2 font-normal text-ink-soft">{trip.year}</span>
-            </h2>
-            {trip.span && (
-              <p className="font-mono text-xs text-ink-soft tabular-nums">
-                {trip.span.from.toLocaleDateString("es")} →{" "}
-                {trip.span.to.toLocaleDateString("es")}
-              </p>
-            )}
-          </div>
+      <ul className="border-t border-rule">
+        {trips.map((trip) => (
+          <li key={trip.folderId} className="border-b border-rule">
+            <button
+              type="button"
+              onClick={() => setOpenId(trip.folderId)}
+              className="flex w-full cursor-pointer items-center gap-4 py-3 text-left hover:text-accent"
+            >
+              {/* The first photo as a stamp, so the list reads as journeys
+                  rather than as a folder listing. */}
+              <span className="w-16 shrink-0">
+                {trip.shots[0] && isDisplayable(trip.shots[0]) ? (
+                  <DriveImage
+                    fileId={trip.shots[0].id}
+                    thumbnailLink={trip.shots[0].thumbnailLink}
+                    alt=""
+                    className="aspect-square w-16 bg-surface-2 object-cover"
+                  />
+                ) : (
+                  <span className="block aspect-square w-16 bg-surface-2" />
+                )}
+              </span>
 
-          <TripNotes folderId={trip.folderId} />
+              <span className="grow">
+                <span className="t-display block text-lg font-semibold">
+                  {trip.name}
+                  <span className="ml-2 font-normal text-ink-soft">
+                    {trip.year}
+                  </span>
+                </span>
+                <span className="t-label block text-ink-soft">
+                  {trip.span
+                    ? `${trip.span.from.toLocaleDateString("es")} → ${trip.span.to.toLocaleDateString("es")}`
+                    : "sin fechas"}
+                </span>
+              </span>
 
-          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {trip.shots.map((shot) => (
-              <Tile key={shot.id} shot={shot} />
-            ))}
-          </ul>
-        </section>
-      ))}
+              <span className="t-label shrink-0 text-ink-soft tabular-nums">
+                {trip.shots.length} {trip.shots.length === 1 ? "foto" : "fotos"}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function OpenTrip({ trip, onBack }: { trip: Trip; onBack?: () => void }) {
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="t-display text-xl font-bold">
+          {trip.name}
+          <span className="ml-2 font-normal text-ink-soft">{trip.year}</span>
+        </h2>
+
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="t-label cursor-pointer text-accent hover:underline"
+          >
+            ← Todos los viajes
+          </button>
+        )}
+      </div>
+
+      {trip.span && (
+        <p className="mb-4 font-mono text-xs text-ink-soft tabular-nums">
+          {trip.span.from.toLocaleDateString("es")} →{" "}
+          {trip.span.to.toLocaleDateString("es")}
+        </p>
+      )}
+
+      <TripNotes folderId={trip.folderId} />
+
+      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {trip.shots.map((shot) => (
+          <Tile key={shot.id} shot={shot} />
+        ))}
+      </ul>
     </>
   );
 }
@@ -180,9 +253,9 @@ function Tile({ shot }: { shot: Shot }) {
           {approximate && (
             <span
               className="t-label bg-paper/85 px-1.5 py-0.5 text-ink-soft"
-              // The map will lean on this: a pin from the souvenir's
-              // coordinates is a city, not a spot.
-              title="Ubicación aproximada, del souvenir"
+              // The map leans on this: a pin from the place's coordinates is a
+              // city, not a spot.
+              title="Ubicación aproximada, del lugar"
             >
               aprox.
             </span>

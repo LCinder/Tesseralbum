@@ -16,7 +16,7 @@ import {
 } from "@/lib/google/gis";
 import {
   openCatalog,
-  removeSouvenir,
+  removePlace,
   saveCatalog,
   type Catalog,
   type CatalogHandle,
@@ -60,8 +60,8 @@ type Session = {
   getToken: () => Promise<string>;
   /** Persists a new catalogue to Drive and updates the context. */
   commit: (next: Catalog) => Promise<void>;
-  /** Deletes a sticker, tidying its Drive folder when it is safe to. */
-  remove: (slug: string) => Promise<FolderOutcome>;
+  /** Deletes a place, tidying its Drive folder when it is safe to. */
+  remove: (id: string) => Promise<FolderOutcome>;
   reload: () => Promise<void>;
 };
 
@@ -218,13 +218,9 @@ export function SessionProvider({
   );
 
   const remove = useCallback(
-    async (slug: string) => {
+    async (id: string) => {
       if (!handle) throw new Error("Not connected to Drive yet.");
-      const { handle: next, folder } = await removeSouvenir(
-        getToken,
-        handle,
-        slug,
-      );
+      const { handle: next, folder } = await removePlace(getToken, handle, id);
       setHandle(next);
       saveCatalogSnapshot(next);
       return folder;

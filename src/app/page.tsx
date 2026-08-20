@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { NewSouvenirForm } from "@/components/NewSouvenirForm";
+import { NewPlaceForm } from "@/components/NewPlaceForm";
 import { SectionLabel, SessionGate, Shell } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
@@ -45,7 +45,7 @@ function Places() {
         )}
       </p>
 
-      <NewSouvenirForm />
+      <NewPlaceForm />
 
       {!empty && (
         <>

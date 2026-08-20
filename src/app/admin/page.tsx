@@ -7,7 +7,7 @@ import { SectionLabel, SessionGate, Shell } from "@/components/Shell";
 import { StoragePanel } from "@/components/StoragePanel";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
-import type { FolderOutcome, Place, Souvenir } from "@/lib/catalog";
+import { sortedPlaces, type FolderOutcome, type Place } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
 
 /**
@@ -34,7 +34,9 @@ function Registry() {
 
   if (!catalog) return null;
 
-  if (catalog.souvenirs.length === 0) {
+  const places = sortedPlaces(catalog);
+
+  if (places.length === 0) {
     return (
       <>
         <h1 className="t-display mb-3 text-4xl font-bold leading-none sm:text-5xl">
@@ -75,16 +77,11 @@ function Registry() {
         </p>
       )}
 
-      <SectionLabel>{catalog.souvenirs.length} en el catálogo</SectionLabel>
+      <SectionLabel>{places.length} en el catálogo</SectionLabel>
 
       <ul className="border-t border-rule">
-        {catalog.souvenirs.map((souvenir) => (
-          <Row
-            key={souvenir.slug}
-            souvenir={souvenir}
-            place={catalog.places.find((p) => p.id === souvenir.placeId)}
-            onDeleted={setNote}
-          />
+        {places.map((place) => (
+          <Row key={place.id} place={place} onDeleted={setNote} />
         ))}
       </ul>
 
@@ -96,12 +93,10 @@ function Registry() {
 }
 
 function Row({
-  souvenir,
   place,
   onDeleted,
 }: {
-  souvenir: Souvenir;
-  place: Place | undefined;
+  place: Place;
   onDeleted: (note: string) => void;
 }) {
   const { remove } = useSession();
@@ -110,13 +105,13 @@ function Row({
   const [problem, setProblem] = useState<string | null>(null);
 
   const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const url = `${origin}/t/${souvenir.slug}`;
+  const url = `${origin}/t/${place.slug}`;
 
   async function doDelete() {
     setBusy(true);
     setProblem(null);
     try {
-      onDeleted(describeOutcome(await remove(souvenir.slug)));
+      onDeleted(describeOutcome(await remove(place.id)));
     } catch (cause) {
       setBusy(false);
       setConfirming(false);
@@ -131,22 +126,20 @@ function Row({
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <div>
           <p className="t-display font-semibold">
-            {place ? place.city : "Lugar desconocido"}
-            {place && (
-              <span className="ml-2 font-normal text-ink-soft">
-                {place.country}
-              </span>
-            )}
+            {place.city}
+            <span className="ml-2 font-normal text-ink-soft">
+              {place.country}
+            </span>
           </p>
           <p className="mt-0.5 font-mono text-xs text-ink-soft">
-            /t/{souvenir.slug} ·{" "}
-            {new Date(souvenir.createdAt).toLocaleDateString("es")}
+            /t/{place.slug} ·{" "}
+            {new Date(place.createdAt).toLocaleDateString("es")}
           </p>
         </div>
 
         <div className="flex items-baseline gap-4">
           <Link
-            href={`/t/${souvenir.slug}`}
+            href={`/t/${place.slug}`}
             className="t-label shrink-0 text-accent hover:underline"
           >
             Ver álbum
@@ -168,7 +161,7 @@ function Row({
         <div className="mt-3 border-l-[3px] border-accent bg-accent-bg px-4 py-3">
           <p className="mb-3 text-[0.95rem]">
             Se borra el lugar del catálogo. Si{" "}
-            <strong>{place?.country ?? "su país"}</strong> se queda sin ninguna
+            <strong>{place.country}</strong> se queda sin ninguno
             y su carpeta está vacía, la carpeta va a la papelera de Drive.{" "}
             <strong>Si tiene fotos, no se toca.</strong>
           </p>

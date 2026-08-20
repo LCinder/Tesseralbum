@@ -2,11 +2,11 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { SessionGate, SectionLabel, Shell } from "@/components/Shell";
+import { SessionGate, Shell } from "@/components/Shell";
 import { UploadPreview } from "@/components/UploadPreview";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
-import { findSouvenir, souvenirsOfPlace } from "@/lib/catalog";
+import { findPlaceBySlug } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
 
 /**
@@ -35,14 +35,14 @@ function Scanned({ slug }: { slug: string }) {
   const { catalog } = useSession();
   if (!catalog) return null;
 
-  const found = findSouvenir(catalog, slug);
+  const place = findPlaceBySlug(catalog, slug);
 
-  if (!found) {
+  if (!place) {
     return (
       <>
         <p className="t-label mb-3 text-accent">Lugar no reconocido</p>
         <h1 className="t-display mb-4 text-4xl font-bold leading-none">
-          Este souvenir no está en tu catálogo
+          Este chip no está en tu catálogo
         </h1>
         <p className="mb-6 max-w-lg text-lg text-ink-soft">
           El chip ha respondido, pero su código no aparece en{" "}
@@ -51,17 +51,12 @@ function Scanned({ slug }: { slug: string }) {
         </p>
         <p>
           <Link href="/admin" className="text-accent underline">
-            Darla de alta ahora
+            Dar de alta un lugar
           </Link>
         </p>
       </>
     );
   }
-
-  const { souvenir, place } = found;
-  const siblings = souvenirsOfPlace(catalog, place.id).filter(
-    (other) => other.slug !== souvenir.slug,
-  );
 
   return (
     <>
@@ -75,23 +70,7 @@ function Scanned({ slug }: { slug: string }) {
         {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
       </p>
 
-      <UploadPreview place={place} slug={souvenir.slug} />
-
-      {siblings.length > 0 && (
-        <>
-          <SectionLabel>Otros chips de {place.city}</SectionLabel>
-          <ul className="border-t border-rule">
-            {siblings.map((other) => (
-              <li
-                key={other.slug}
-                className="border-b border-rule py-3 font-mono text-xs text-ink-soft"
-              >
-                /t/{other.slug}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      <UploadPreview place={place} slug={place.slug} />
 
       <p className="mt-10">
         <Link href={`/place/${place.id}`} className="text-accent underline">

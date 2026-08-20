@@ -10,7 +10,17 @@ function place(
   lat: number,
   lng: number,
 ): Place {
-  return { id, city, country, countryCode: country.slice(0, 2).toUpperCase(), lat, lng };
+  return {
+    id,
+    slug: id.slice(0, 10).padEnd(10, "x"),
+    city,
+    country,
+    countryCode: country.slice(0, 2).toUpperCase(),
+    lat,
+    lng,
+    active: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
 }
 
 const KIOTO = place("kioto-japon", "Kioto", "Japón", 35.0116, 135.7681);

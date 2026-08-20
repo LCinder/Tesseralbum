@@ -57,8 +57,9 @@ carpeta se amplía, renombrándose si hace falta. Más lejos, es una visita nuev
 y le toca carpeta propia. Dos viajes distintos en el mismo mes se distinguen
 con un sufijo: `Septiembre` y `Septiembre (2)`.
 
-De ahí que un lugar no necesite más nombre que su ciudad: **volver al mismo
-sitio lo distinguen las fechas, no una etiqueta.**
+De ahí que **un lugar tenga un solo chip**: volver a un sitio no necesita otra
+pegatina, porque lo que distingue las visitas son las fechas de las fotos. Dar
+de alta una ciudad que ya tienes te devuelve la URL que ya tenía.
 
 ## Qué hay
 
@@ -66,7 +67,7 @@ sitio lo distinguen las fechas, no una etiqueta.**
 |---|---|
 | `/` | Tus lugares, y el alta de lugares nuevos |
 | `/t/[slug]` | Aterrizaje del NFC: el lugar, y subir fotos |
-| `/place/[id]` | El álbum: viajes, fotos y el diario de cada uno |
+| `/place/[id]` | El álbum: la lista de viajes, y dentro las fotos y el diario |
 | `/map` | Mapa de lugares, con vista previa al pulsar |
 | `/passport` | Países, ciudades, viajes, días fuera y gráfico por año |
 | `/admin` | URLs de los lugares, borrado, cuota y caché |

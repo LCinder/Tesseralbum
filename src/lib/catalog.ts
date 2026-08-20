@@ -10,12 +10,16 @@ import {
 import { tripPath, type DateSpan } from "@/lib/trips";
 
 /**
- * The catalogue: which souvenir points at which place.
+ * The catalogue: the places you have chips for.
  *
- * This is the one piece of shared state the app needs, and it lives as a JSON
- * file inside the app's own Drive folder. It replaces what used to be four
- * Postgres tables. Photo metadata does *not* live here — that rides along on
- * each file's `appProperties`, so uploads never contend over a shared index.
+ * It lives as a JSON file inside the app's own Drive folder. Photo metadata
+ * does *not* live here — that rides along on each file's `appProperties`, so
+ * uploads never contend over a shared index.
+ *
+ * One place, one chip, one URL. An earlier design let several chips point at
+ * the same place, which meant a `souvenirs` array beside `places` and a join
+ * on every lookup for a distinction nobody wanted: going back to a city is
+ * told apart by the dates of its photos, not by carrying a second magnet.
  */
 
 export const ROOT_FOLDER = "Tesseralbum";
@@ -23,39 +27,31 @@ const CATALOG_NAME = "souvenirs.json";
 
 export type Place = {
   id: string;
+  /** The code in the chip's URL. */
+  slug: string;
   city: string;
   country: string;
   countryCode: string;
   lat: number;
   lng: number;
-};
-
-export type Souvenir = {
-  slug: string;
-  placeId: string;
   active: boolean;
   createdAt: string;
 };
 
 export type Catalog = {
-  version: 1;
+  version: 2;
   places: Place[];
-  souvenirs: Souvenir[];
 };
 
-export const EMPTY_CATALOG: Catalog = {
-  version: 1,
-  places: [],
-  souvenirs: [],
-};
+export const EMPTY_CATALOG: Catalog = { version: 2, places: [] };
 
 /**
  * Slug alphabet with no vowels and no ambiguous glyphs, so a code read aloud
  * or copied by hand does not get garbled.
  *
  * Under the Drive-permissions model this is an identifier, not a secret —
- * holding it grants nothing. It stays opaque for a different reason: so a
- * sticker can be reassigned to another souvenir without reprogramming the chip.
+ * holding it grants nothing. It stays opaque for a different reason: so a chip
+ * can be reassigned to another place without reprogramming it.
  */
 const ALPHABET = "23456789bcdfghjkmnpqrstvwxyz";
 const SLUG_LENGTH = 10;
@@ -85,6 +81,77 @@ export function placeId(city: string, country: string): string {
   return `${strip(city)}-${strip(country)}`;
 }
 
+/** The shape written by the version that kept chips in their own array. */
+type LegacyCatalog = {
+  places?: (Partial<Place> & { id?: string })[];
+  souvenirs?: {
+    slug?: string;
+    placeId?: string;
+    active?: boolean;
+    createdAt?: string;
+  }[];
+};
+
+/**
+ * Reads either shape, always returning the current one.
+ *
+ * When several old chips pointed at one place, the **oldest** wins: that is
+ * the chip most likely to be stuck on a souvenir already, and its URL must
+ * keep resolving. The others stop working, which is the unavoidable cost of
+ * collapsing the model — and better than picking arbitrarily.
+ */
+export function migrate(raw: LegacyCatalog): Catalog {
+  const rawPlaces = Array.isArray(raw.places) ? raw.places : [];
+
+  // Already the current shape: every place carries its own slug.
+  if (rawPlaces.length > 0 && rawPlaces.every((place) => place.slug)) {
+    return { version: 2, places: rawPlaces.filter(isPlace) };
+  }
+
+  const oldest = new Map<string, { slug: string; createdAt: string }>();
+
+  for (const souvenir of Array.isArray(raw.souvenirs) ? raw.souvenirs : []) {
+    if (!souvenir.slug || !souvenir.placeId || souvenir.active === false) {
+      continue;
+    }
+
+    const createdAt = souvenir.createdAt ?? "";
+    const current = oldest.get(souvenir.placeId);
+    if (!current || createdAt < current.createdAt) {
+      oldest.set(souvenir.placeId, { slug: souvenir.slug, createdAt });
+    }
+  }
+
+  const places: Place[] = [];
+
+  for (const place of rawPlaces) {
+    if (!place.id || !place.city || !place.country) continue;
+
+    const chip = oldest.get(place.id);
+    // A place whose chips were all deactivated has no way in; giving it a
+    // fresh slug would silently invalidate whatever is on the physical chip.
+    if (!chip && !place.slug) continue;
+
+    places.push({
+      id: place.id,
+      slug: place.slug ?? chip!.slug,
+      city: place.city,
+      country: place.country,
+      countryCode: (place.countryCode ?? "").toUpperCase(),
+      lat: Number(place.lat) || 0,
+      lng: Number(place.lng) || 0,
+      active: place.active ?? true,
+      createdAt: place.createdAt ?? chip?.createdAt ?? new Date().toISOString(),
+    });
+  }
+
+  return { version: 2, places };
+}
+
+function isPlace(value: Partial<Place>): value is Place {
+  return Boolean(value.id && value.slug && value.city && value.country);
+}
+
 export type CatalogHandle = {
   rootId: string;
   /** Absent until the catalogue has been written for the first time. */
@@ -111,17 +178,9 @@ export async function openCatalog(
     return { rootId, fileId: null, catalog: EMPTY_CATALOG };
   }
 
-  const raw = await readJson<Partial<Catalog>>(getToken, existing.id);
+  const raw = await readJson<LegacyCatalog>(getToken, existing.id);
 
-  return {
-    rootId,
-    fileId: existing.id,
-    catalog: {
-      version: 1,
-      places: Array.isArray(raw.places) ? raw.places : [],
-      souvenirs: Array.isArray(raw.souvenirs) ? raw.souvenirs : [],
-    },
-  };
+  return { rootId, fileId: existing.id, catalog: migrate(raw) };
 }
 
 export async function saveCatalog(
@@ -140,37 +199,31 @@ export async function saveCatalog(
   return { ...handle, fileId: written.id, catalog };
 }
 
-export function findSouvenir(
-  catalog: Catalog,
-  slug: string,
-): { souvenir: Souvenir; place: Place } | null {
+export function findPlaceBySlug(catalog: Catalog, slug: string): Place | null {
   if (!SLUG_PATTERN.test(slug)) return null;
-
-  const souvenir = catalog.souvenirs.find((s) => s.slug === slug && s.active);
-  if (!souvenir) return null;
-
-  const place = catalog.places.find((p) => p.id === souvenir.placeId);
-  if (!place) return null;
-
-  return { souvenir, place };
-}
-
-export function sortedPlaces(catalog: Catalog): Place[] {
-  return [...catalog.places].sort(
-    (a, b) => a.country.localeCompare(b.country) || a.city.localeCompare(b.city),
+  return (
+    catalog.places.find((place) => place.slug === slug && place.active) ?? null
   );
 }
 
-export function souvenirsOfPlace(catalog: Catalog, id: string): Souvenir[] {
-  return catalog.souvenirs.filter((s) => s.placeId === id && s.active);
+export function sortedPlaces(catalog: Catalog): Place[] {
+  return [...catalog.places]
+    .filter((place) => place.active)
+    .sort(
+      (a, b) =>
+        a.country.localeCompare(b.country) || a.city.localeCompare(b.city),
+    );
 }
 
 /**
- * Adds a place and a souvenir in one step, reusing the place when it is
- * already known — that is the normal case for a second souvenir from the
- * same city.
+ * Registers a place, or hands back the one already registered.
+ *
+ * Reusing the existing entry is the point: a city you have been to before
+ * already has a chip out in the world, and minting a second URL for it would
+ * leave you with two codes for one album and no way to know which is on which
+ * magnet. Returning again is recorded by the photos' dates, not by a new chip.
  */
-export function withNewSouvenir(
+export function withPlace(
   catalog: Catalog,
   input: {
     city: string;
@@ -179,82 +232,79 @@ export function withNewSouvenir(
     lat: number;
     lng: number;
   },
-): { catalog: Catalog; souvenir: Souvenir } {
+): { catalog: Catalog; place: Place; created: boolean } {
   const id = placeId(input.city, input.country);
+  const existing = catalog.places.find((place) => place.id === id);
 
-  const places = catalog.places.some((p) => p.id === id)
-    ? catalog.places
-    : [
-        ...catalog.places,
-        {
-          id,
-          city: input.city,
-          country: input.country,
-          countryCode: input.countryCode.toUpperCase(),
-          lat: input.lat,
-          lng: input.lng,
-        },
-      ];
+  if (existing) {
+    // Reactivating rather than duplicating, so a place deleted and added again
+    // keeps the code that is already stuck on the souvenir.
+    if (existing.active) return { catalog, place: existing, created: false };
 
-  const taken = new Set(catalog.souvenirs.map((s) => s.slug));
+    const revived = { ...existing, active: true };
+    return {
+      catalog: {
+        ...catalog,
+        places: catalog.places.map((place) =>
+          place.id === id ? revived : place,
+        ),
+      },
+      place: revived,
+      created: false,
+    };
+  }
+
+  const taken = new Set(catalog.places.map((place) => place.slug));
   let slug = newSlug();
   while (taken.has(slug)) slug = newSlug();
 
-  const souvenir: Souvenir = {
+  const place: Place = {
+    id,
     slug,
-    placeId: id,
+    city: input.city,
+    country: input.country,
+    countryCode: input.countryCode.toUpperCase(),
+    lat: input.lat,
+    lng: input.lng,
     active: true,
     createdAt: new Date().toISOString(),
   };
 
   return {
-    catalog: { ...catalog, places, souvenirs: [...catalog.souvenirs, souvenir] },
-    souvenir,
+    catalog: { ...catalog, places: [...catalog.places, place] },
+    place,
+    created: true,
   };
 }
 
 /**
- * Removes a souvenir, and the place with it when nothing else points there.
- *
- * Also reports whether the country folder still has a reason to exist: two
- * places can share one country folder (Dublín and Cork both live under
+ * Removes a place, and reports whether its country folder still has a reason
+ * to exist: two places can share one (Dublín and Cork both live under
  * Irlanda), so dropping one must not take the folder with it.
  */
-export function withoutSouvenir(
+export function withoutPlace(
   catalog: Catalog,
-  slug: string,
+  id: string,
 ): {
   catalog: Catalog;
-  removed: Souvenir;
-  place: Place;
-  placeDropped: boolean;
+  removed: Place;
   countryStillUsed: boolean;
 } | null {
-  const removed = catalog.souvenirs.find((s) => s.slug === slug);
+  const removed = catalog.places.find((place) => place.id === id);
   if (!removed) return null;
 
-  const place = catalog.places.find((p) => p.id === removed.placeId);
-  if (!place) return null;
-
-  const souvenirs = catalog.souvenirs.filter((s) => s.slug !== slug);
-  const placeDropped = !souvenirs.some((s) => s.placeId === removed.placeId);
-
-  const places = placeDropped
-    ? catalog.places.filter((p) => p.id !== removed.placeId)
-    : catalog.places;
-
-  const countryStillUsed = places.some((p) => p.country === place.country);
+  const places = catalog.places.filter((place) => place.id !== id);
 
   return {
-    catalog: { ...catalog, places, souvenirs },
+    catalog: { ...catalog, places },
     removed,
-    place,
-    placeDropped,
-    countryStillUsed,
+    countryStillUsed: places.some(
+      (place) => place.country === removed.country && place.active,
+    ),
   };
 }
 
-/** What happened to the country folder when a souvenir was deleted. */
+/** What happened to the country folder when a place was deleted. */
 export type FolderOutcome =
   | { kind: "none" }
   | { kind: "trashed"; country: string }
@@ -262,43 +312,43 @@ export type FolderOutcome =
   | { kind: "kept-still-used"; country: string };
 
 /**
- * Deletes a souvenir from the catalogue and tidies Drive behind it.
+ * Deletes a place from the catalogue and tidies Drive behind it.
  *
  * The rule for the folder is deliberately cautious: it only goes to the bin
  * when no other place needs it *and* it holds nothing. A folder with photos in
- * it is left alone and the caller is told, because deleting a sticker is a
+ * it is left alone and the caller is told, because deleting an entry is a
  * bookkeeping act and losing a holiday's photos to it would be a disaster
  * disguised as tidiness.
  */
-export async function removeSouvenir(
+export async function removePlace(
   getToken: TokenSource,
   handle: CatalogHandle,
-  slug: string,
+  id: string,
 ): Promise<{ handle: CatalogHandle; folder: FolderOutcome }> {
-  const result = withoutSouvenir(handle.catalog, slug);
+  const result = withoutPlace(handle.catalog, id);
   if (!result) throw new Error("Ese lugar ya no está en el catálogo.");
 
-  const { catalog, place, countryStillUsed } = result;
+  const { catalog, removed, countryStillUsed } = result;
 
-  // The catalogue goes first: if the folder step fails, the sticker is still
+  // The catalogue goes first: if the folder step fails, the place is still
   // gone and a retry is harmless, rather than the reverse.
   const saved = await saveCatalog(getToken, handle, catalog);
 
   let folder: FolderOutcome = { kind: "none" };
 
   if (countryStillUsed) {
-    folder = { kind: "kept-still-used", country: place.country };
+    folder = { kind: "kept-still-used", country: removed.country };
   } else {
-    const existing = await findChild(getToken, handle.rootId, place.country, {
+    const existing = await findChild(getToken, handle.rootId, removed.country, {
       folder: true,
     });
 
     if (existing) {
       if (await isEmpty(getToken, existing.id)) {
         await trash(getToken, existing.id);
-        folder = { kind: "trashed", country: place.country };
+        folder = { kind: "trashed", country: removed.country };
       } else {
-        folder = { kind: "kept-not-empty", country: place.country };
+        folder = { kind: "kept-not-empty", country: removed.country };
       }
     }
   }

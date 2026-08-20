@@ -13,7 +13,17 @@ const on = (year: number, month: number, day: number) =>
   new Date(year, month - 1, day, 12, 0, 0);
 
 function place(id: string, city: string, country: string, code: string): Place {
-  return { id, city, country, countryCode: code, lat: 0, lng: 0 };
+  return {
+    id,
+    slug: id.slice(0, 10).padEnd(10, "x"),
+    city,
+    country,
+    countryCode: code,
+    lat: 0,
+    lng: 0,
+    active: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
 }
 
 const KIOTO = place("kioto-japon", "Kioto", "Japón", "JP");

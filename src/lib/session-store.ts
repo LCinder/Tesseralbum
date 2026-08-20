@@ -100,7 +100,6 @@ export function loadCatalog(): StoredCatalog | null {
   const usable =
     stored.catalog &&
     Array.isArray(stored.catalog.places) &&
-    Array.isArray(stored.catalog.souvenirs) &&
     typeof stored.rootId === "string" &&
     typeof stored.storedAt === "number" &&
     Date.now() - stored.storedAt < CATALOG_MAX_AGE_MS;

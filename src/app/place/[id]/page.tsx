@@ -4,10 +4,9 @@ import { use } from "react";
 import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import { Gallery } from "@/components/Gallery";
-import { SectionLabel, SessionGate, Shell } from "@/components/Shell";
+import { SessionGate, Shell } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
-import { souvenirsOfPlace } from "@/lib/catalog";
 import { isConfigured } from "@/lib/env";
 
 export default function PlacePage({ params }: PageProps<"/place/[id]">) {
@@ -50,8 +49,6 @@ function Album({ id }: { id: string }) {
     );
   }
 
-  const souvenirs = souvenirsOfPlace(catalog, place.id);
-
   return (
     <>
       <p className="t-label mb-2 text-teal">{place.country}</p>
@@ -66,25 +63,18 @@ function Album({ id }: { id: string }) {
 
       <Gallery place={place} />
 
-      <SectionLabel>
-        {souvenirs.length} souvenir{souvenirs.length === 1 ? "" : "s"}
-      </SectionLabel>
+      <div className="mt-10 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-rule pt-4">
+        <span className="t-label text-ink-soft">Su chip</span>
+        <span className="flex items-baseline gap-4">
+          <code className="font-mono text-xs text-ink-soft">
+            /t/{place.slug}
+          </code>
+          <CopyButton
+            value={`${typeof window === "undefined" ? "" : window.location.origin}/t/${place.slug}`}
+          />
+        </span>
+      </div>
 
-      <ul className="border-t border-rule">
-        {souvenirs.map((souvenir) => (
-          <li
-            key={souvenir.slug}
-            className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-rule py-3"
-          >
-            <code className="font-mono text-xs text-ink-soft">
-              /t/{souvenir.slug}
-            </code>
-            <CopyButton
-              value={`${typeof window === "undefined" ? "" : window.location.origin}/t/${souvenir.slug}`}
-            />
-          </li>
-        ))}
-      </ul>
     </>
   );
 }

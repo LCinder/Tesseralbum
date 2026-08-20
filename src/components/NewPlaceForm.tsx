@@ -6,15 +6,18 @@ import { CopyButton } from "@/components/CopyButton";
 import { PlaceSearch } from "@/components/PlaceSearch";
 import { SectionLabel } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
-import { withNewSouvenir, type Souvenir } from "@/lib/catalog";
+import { withPlace, type Place } from "@/lib/catalog";
 import type { Found } from "@/lib/geocode";
 
 /**
- * Creating a sticker.
+ * Registering a place.
  *
  * Lives on the home page because it is the first thing anyone needs to do,
  * and because a fresh account has nothing else to look at. `/admin` is for
  * managing what already exists.
+ *
+ * Entering a city that is already registered is not an error and not a
+ * duplicate: it hands back the URL that place already has.
  */
 
 const BLANK_MANUAL = {
@@ -25,7 +28,7 @@ const BLANK_MANUAL = {
   lng: "",
 };
 
-export function NewSouvenirForm() {
+export function NewPlaceForm() {
   const { catalog, commit } = useSession();
 
   const [place, setPlace] = useState<Found | null>(null);
@@ -33,7 +36,9 @@ export function NewSouvenirForm() {
   const [byHand, setByHand] = useState(false);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [created, setCreated] = useState<Souvenir | null>(null);
+  const [created, setCreated] = useState<{ place: Place; isNew: boolean } | null>(
+    null,
+  );
 
   if (!catalog) return null;
 
@@ -91,15 +96,19 @@ export function NewSouvenirForm() {
 
     setSaving(true);
     try {
-      const { catalog: next, souvenir } = withNewSouvenir(catalog, {
+      const { catalog: next, place, created: isNew } = withPlace(catalog, {
         city: resolved.city,
         country: resolved.country,
         countryCode: resolved.countryCode,
         lat: resolved.lat,
         lng: resolved.lng,
       });
-      await commit(next);
-      setCreated(souvenir);
+
+      // A place already registered keeps its URL: the chip for it is already
+      // stuck on a souvenir somewhere, and a second code would be one album
+      // with two ways in and no way to tell which is which.
+      if (isNew) await commit(next);
+      setCreated({ place, isNew });
       setPlace(null);
       setManual(BLANK_MANUAL);
       setByHand(false);
@@ -114,7 +123,7 @@ export function NewSouvenirForm() {
 
   return (
     <>
-      {created && <JustCreated souvenir={created} />}
+      {created && <JustCreated place={created.place} isNew={created.isNew} />}
 
       <SectionLabel>Nuevo lugar</SectionLabel>
 
@@ -204,21 +213,23 @@ export function NewSouvenirForm() {
   );
 }
 
-function JustCreated({ souvenir }: { souvenir: Souvenir }) {
+function JustCreated({ place, isNew }: { place: Place; isNew: boolean }) {
   // Read at render rather than stored: the origin differs between localhost
   // and the deployment, and this only ever renders after a click.
   const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const url = `${origin}/t/${souvenir.slug}`;
+  const url = `${origin}/t/${place.slug}`;
 
   return (
     <div className="mb-10 border-l-[3px] border-teal bg-teal-bg px-4 py-4">
-      <p className="t-label mb-2 text-teal">Grábale esto al chip</p>
+      <p className="t-label mb-2 text-teal">
+        {isNew ? "Grábale esto al chip" : `${place.city} ya estaba dado de alta`}
+      </p>
 
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <p className="break-all font-mono text-sm">{url}</p>
         <span className="flex items-baseline gap-4">
           <Link
-            href={`/t/${souvenir.slug}`}
+            href={`/t/${place.slug}`}
             className="t-label shrink-0 text-accent hover:underline"
           >
             Ver álbum
@@ -228,8 +239,19 @@ function JustCreated({ souvenir }: { souvenir: Souvenir }) {
       </div>
 
       <p className="text-[0.9rem] text-ink-soft">
-        Registro NDEF de tipo URI. Imprime también un QR diminuto al lado: el
-        NFC falla con fundas gruesas y móviles viejos, y el QR no cuesta nada.
+        {isNew ? (
+          <>
+            Registro NDEF de tipo URI. Imprime también un QR diminuto al lado:
+            el NFC falla con fundas gruesas y móviles viejos, y el QR no cuesta
+            nada.
+          </>
+        ) : (
+          <>
+            Es la misma URL de siempre, no una nueva. Volver a un sitio no
+            necesita otro chip: las fotos del viaje nuevo se guardarán en su
+            propia carpeta por las fechas que traigan.
+          </>
+        )}
       </p>
     </div>
   );
