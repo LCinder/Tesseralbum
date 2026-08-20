@@ -20,6 +20,8 @@ export type DriveFile = {
     name: string;
     mimeType: string;
     appProperties?: Record<string, string>;
+    /** Folder ids. Drive allows several; ours only ever have one. */
+    parents?: string[];
     /**
      * Google's own generated thumbnail. Short-lived and served from a different
      * host, so it is a fast path rather than something to rely on — see
@@ -31,7 +33,7 @@ export type DriveFile = {
 
 /** Fields worth asking for when listing media rather than folders. */
 const MEDIA_FIELDS =
-    "id,name,mimeType,appProperties,thumbnailLink,size";
+    "id,name,mimeType,appProperties,thumbnailLink,size,parents";
 
 /**
  * Downloads a file's bytes.
@@ -218,6 +220,125 @@ export async function listChildren(
     } while (pageToken);
 
     return files;
+}
+
+/**
+ * Everything the app has ever created, in one paginated sweep per kind.
+ *
+ * The quiet advantage of the `drive.file` scope: results are already limited
+ * to our own files, so no parent constraint is needed and the whole archive is
+ * two flat queries rather than a walk down country, year and trip folders.
+ *
+ * Used by the passport, which needs the complete picture by definition. Page
+ * tokens are sequential, so cost is about one round trip per hundred items.
+ */
+export async function listEverything(
+    getToken: TokenSource,
+    {signal}: { signal?: AbortSignal } = {},
+): Promise<{ folders: DriveFile[]; media: DriveFile[] }> {
+    const sweep = async (foldersOnly: boolean) => {
+        const found: DriveFile[] = [];
+        let pageToken: string | undefined;
+
+        do {
+            const url = new URL(FILES);
+            url.searchParams.set(
+                "q",
+                `mimeType ${foldersOnly ? "=" : "!="} ${quote(FOLDER_MIME)} and trashed = false`,
+            );
+            url.searchParams.set(
+                "fields",
+                `nextPageToken, files(${foldersOnly ? "id,name,mimeType,appProperties,parents" : MEDIA_FIELDS})`,
+            );
+            url.searchParams.set("pageSize", "100");
+            url.searchParams.set("supportsAllDrives", "true");
+            url.searchParams.set("includeItemsFromAllDrives", "true");
+            if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+            const response = await call(getToken, url.toString(), {signal});
+            const body = (await response.json()) as {
+                files?: DriveFile[];
+                nextPageToken?: string;
+            };
+
+            found.push(...(body.files ?? []));
+            pageToken = body.nextPageToken;
+        } while (pageToken);
+
+        return found;
+    };
+
+    const [folders, files] = await Promise.all([sweep(true), sweep(false)]);
+
+    return {
+        folders,
+        // souvenirs.json and the trip notes share the scope and are not photos.
+        media: files.filter(
+            (file) =>
+                file.mimeType.startsWith("image/") ||
+                file.mimeType.startsWith("video/"),
+        ),
+    };
+}
+
+/** Reads a file as text. Used for the trip notes. */
+export async function readText(
+    getToken: TokenSource,
+    fileId: string,
+    {signal}: { signal?: AbortSignal } = {},
+): Promise<string> {
+    const url = new URL(`${FILES}/${fileId}`);
+    url.searchParams.set("alt", "media");
+    url.searchParams.set("supportsAllDrives", "true");
+
+    const response = await call(getToken, url.toString(), {signal});
+    return response.text();
+}
+
+/**
+ * Creates or overwrites a plain-text file.
+ *
+ * Markdown rather than a database column, so the notes stay readable and
+ * editable in Drive itself — the same principle that put the catalogue in a
+ * JSON file next to the photos.
+ */
+export async function writeText(
+    getToken: TokenSource,
+    text: string,
+    target: { fileId: string } | { parentId: string; name: string },
+): Promise<DriveFile> {
+    const updating = "fileId" in target;
+
+    const url = new URL(updating ? `${UPLOAD}/${target.fileId}` : UPLOAD);
+    url.searchParams.set("uploadType", "multipart");
+    url.searchParams.set("fields", "id,name,mimeType");
+    url.searchParams.set("supportsAllDrives", "true");
+
+    const metadata = updating
+        ? {}
+        : {name: target.name, parents: [target.parentId], mimeType: "text/markdown"};
+
+    const boundary = `sv${crypto.randomUUID().replace(/-/g, "")}`;
+    const payload = [
+        `--${boundary}`,
+        "Content-Type: application/json; charset=UTF-8",
+        "",
+        JSON.stringify(metadata),
+        `--${boundary}`,
+        "Content-Type: text/markdown; charset=UTF-8",
+        "",
+        text,
+        `--${boundary}--`,
+        "",
+    ].join("\r\n");
+
+    const response = await call(getToken, url.toString(), {
+        method: updating ? "PATCH" : "POST",
+        headers: {"Content-Type": `multipart/related; boundary=${boundary}`},
+        body: payload,
+    });
+
+    return (await response.json()) as DriveFile;
 }
 
 /**

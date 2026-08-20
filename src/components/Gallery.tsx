@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DriveImage } from "@/components/DriveImage";
 import { SectionLabel } from "@/components/Shell";
+import { TripNotes } from "@/components/TripNotes";
 import { useSession } from "@/components/SessionProvider";
 import { ROOT_FOLDER, type Place } from "@/lib/catalog";
 import {
@@ -132,6 +133,8 @@ export function Gallery({ place }: { place: Place }) {
               </p>
             )}
           </div>
+
+          <TripNotes folderId={trip.folderId} />
 
           <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {trip.shots.map((shot) => (
