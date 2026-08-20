@@ -1,11 +1,14 @@
 /**
  * Google Identity Services token client.
  *
- * The whole point of this file is that **no credential is ever stored**. The
- * access token lives in memory for an hour and is re-requested silently while
- * the browser still has a Google session. There is no refresh token, so there
- * is nothing to encrypt, nothing to rotate, and nothing to leak from a server
- * we do not have.
+ * There is no refresh token here, and that is the point: nothing long-lived
+ * exists to encrypt, rotate, or leak from a server we do not have. What Google
+ * grants is an access token good for one hour.
+ *
+ * That token is kept — in memory, and in localStorage via `session-store` — so
+ * a reload inside the hour needs no round trip at all. Past the hour a silent
+ * request renews it, invisibly, as long as the browser still has a Google
+ * session and consent was granted once.
  */
 
 const GIS_SRC = "https://accounts.google.com/gsi/client";
@@ -30,6 +33,7 @@ type Gis = {
         client_id: string;
         scope: string;
         prompt?: string;
+        hint?: string;
         callback: (response: TokenResponse) => void;
         error_callback?: (error: { type?: string }) => void;
       }) => TokenClient;
@@ -108,15 +112,17 @@ export type Token = { value: string; expiresAt: number };
  */
 export async function requestToken(
   clientId: string,
-  { silent }: { silent: boolean },
+  { silent, hint }: { silent: boolean; hint?: string | null },
 ): Promise<Token> {
   const gis = await loadGis();
 
   return new Promise<Token>((resolve, reject) => {
     // A silent request that Google cannot satisfy sometimes fires neither
-    // callback, so the promise would hang forever without this.
+    // callback, so the promise would hang forever without this. Fifteen
+    // seconds rather than eight: on a slow mobile connection a premature
+    // timeout shows the connect button to someone who was already signed in.
     const timeout = silent
-      ? setTimeout(() => reject(new ConsentRequired()), 8000)
+      ? setTimeout(() => reject(new ConsentRequired()), 15000)
       : undefined;
 
     const settle = (outcome: () => void) => {
@@ -127,6 +133,8 @@ export async function requestToken(
     const client = gis.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: DRIVE_SCOPE,
+      // Names the account so Google skips the chooser on renewal.
+      ...(hint ? { hint } : {}),
       callback: (response) => {
         if (response.access_token) {
           // Expire a minute early so a call never starts on a dying token.
@@ -154,9 +162,11 @@ export async function requestToken(
       error_callback: () => settle(() => reject(new ConsentRequired())),
     });
 
-    // An empty prompt is what makes the request silent when Google is able to
-    // answer on its own; "consent" forces the picker and the scope screen.
-    client.requestAccessToken({ prompt: silent ? "" : "consent" });
+    // An empty prompt means "ask only if you must", which is right for both
+    // paths: silent renewal shows nothing, and a first connect still gets the
+    // consent screen. Forcing "consent" would re-ask someone who already said
+    // yes, every single time.
+    client.requestAccessToken({ prompt: "" });
   });
 }
 
