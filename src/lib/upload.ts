@@ -231,6 +231,7 @@ export async function uploadBatch(
     rootId,
     onProgress,
     signal,
+    span: filedUnder,
   }: {
     media: MediaFile[];
     place: Place;
@@ -238,9 +239,18 @@ export async function uploadBatch(
     rootId: string;
     onProgress: (progress: Progress) => void;
     signal?: AbortSignal;
+    /**
+     * The span to file under, when it is not the one this media implies.
+     *
+     * Retrying the three photos that failed out of fifty must land them in
+     * the same trip as the forty-seven that worked, so the caller passes the
+     * whole batch's span rather than letting the survivors redraw the trip
+     * around themselves.
+     */
+    span?: DateSpan;
   },
 ): Promise<void> {
-  const span = spanOf(media.map((item) => item.takenAt));
+  const span = filedUnder ?? spanOf(media.map((item) => item.takenAt));
   if (!span) {
     throw new Error(
       "Ninguna de las fotos tiene fecha, así que no se puede decidir la carpeta del viaje.",
