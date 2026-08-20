@@ -75,7 +75,7 @@ function Scanned({ slug }: { slug: string }) {
         {place.lat.toFixed(4)}, {place.lng.toFixed(4)}
       </p>
 
-      <UploadPreview place={place} />
+      <UploadPreview place={place} slug={souvenir.slug} />
 
       {siblings.length > 0 && (
         <>

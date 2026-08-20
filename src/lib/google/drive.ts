@@ -144,6 +144,90 @@ export async function ensurePath(
   return parentId;
 }
 
+/** Everything the app can see inside a folder. */
+export async function listChildren(
+  getToken: TokenSource,
+  parentId: string,
+  { foldersOnly = false }: { foldersOnly?: boolean } = {},
+): Promise<DriveFile[]> {
+  const files: DriveFile[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = new URL(FILES);
+    url.searchParams.set(
+      "q",
+      [
+        `${quote(parentId)} in parents`,
+        "trashed = false",
+        foldersOnly ? `mimeType = ${quote(FOLDER_MIME)}` : "",
+      ]
+        .filter(Boolean)
+        .join(" and "),
+    );
+    url.searchParams.set(
+      "fields",
+      "nextPageToken, files(id,name,mimeType,appProperties)",
+    );
+    url.searchParams.set("pageSize", "100");
+    url.searchParams.set("supportsAllDrives", "true");
+    url.searchParams.set("includeItemsFromAllDrives", "true");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+    const response = await call(getToken, url.toString());
+    const body = (await response.json()) as {
+      files?: DriveFile[];
+      nextPageToken?: string;
+    };
+
+    files.push(...(body.files ?? []));
+    // Page tokens are sequential, so this cannot be parallelised — the reason
+    // a map over thousands of photos eventually wants a local index.
+    pageToken = body.nextPageToken;
+  } while (pageToken);
+
+  return files;
+}
+
+/** Finds a file the app uploaded earlier with this exact content hash. */
+export async function findByHash(
+  getToken: TokenSource,
+  sha256: string,
+): Promise<DriveFile | null> {
+  const url = new URL(FILES);
+  url.searchParams.set(
+    "q",
+    `appProperties has { key='sha256' and value=${quote(sha256)} } and trashed = false`,
+  );
+  url.searchParams.set("fields", "files(id,name,mimeType,appProperties)");
+  url.searchParams.set("pageSize", "1");
+  url.searchParams.set("supportsAllDrives", "true");
+  url.searchParams.set("includeItemsFromAllDrives", "true");
+
+  const response = await call(getToken, url.toString());
+  const body = (await response.json()) as { files?: DriveFile[] };
+  return body.files?.[0] ?? null;
+}
+
+/** Renames a file or folder, and optionally rewrites its app properties. */
+export async function update(
+  getToken: TokenSource,
+  fileId: string,
+  changes: { name?: string; appProperties?: Record<string, string> },
+): Promise<DriveFile> {
+  const url = new URL(`${FILES}/${fileId}`);
+  url.searchParams.set("fields", "id,name,mimeType,appProperties");
+  url.searchParams.set("supportsAllDrives", "true");
+
+  const response = await call(getToken, url.toString(), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+
+  return (await response.json()) as DriveFile;
+}
+
 /** Whether a folder has anything in it that the app can see. */
 export async function isEmpty(
   getToken: TokenSource,
@@ -180,6 +264,137 @@ export async function trash(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ trashed: true }),
   });
+}
+
+/**
+ * Chunk size for resumable uploads.
+ *
+ * Google requires a multiple of 256 KB for every chunk but the last, and
+ * recommends at least 8 MB so the per-request overhead stays small. Most
+ * photos fit in one chunk, which is the point.
+ */
+export const CHUNK_BYTES = 8 * 1024 * 1024;
+
+export type UploadTarget = {
+  name: string;
+  parentId: string;
+  appProperties?: Record<string, string>;
+};
+
+/**
+ * Opens a resumable upload session and returns the URL to push bytes to.
+ *
+ * This is the piece that makes a browser-only app possible: Vercel caps a
+ * request body at 4.5 MB, which one phone photo already brushes against. Here
+ * the server authorises nothing and sees nothing — the browser talks straight
+ * to Google.
+ *
+ * The returned URL carries its own authorisation, so the chunk PUTs that
+ * follow need no bearer token. It is single-use and short-lived.
+ */
+export async function startResumableUpload(
+  getToken: TokenSource,
+  target: UploadTarget,
+  file: File,
+): Promise<string> {
+  const url = new URL(UPLOAD);
+  url.searchParams.set("uploadType", "resumable");
+  url.searchParams.set("supportsAllDrives", "true");
+
+  const response = await call(getToken, url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Upload-Content-Type": file.type || "application/octet-stream",
+      "X-Upload-Content-Length": String(file.size),
+    },
+    body: JSON.stringify({
+      name: target.name,
+      parents: [target.parentId],
+      // Set here rather than PATCHed afterwards: one request fewer, and the
+      // file is never briefly present without its metadata.
+      appProperties: target.appProperties,
+    }),
+  });
+
+  const session = response.headers.get("Location");
+  if (!session) {
+    throw new DriveError(
+      response.status,
+      "Google no devolvió la URL de sesión de subida.",
+    );
+  }
+
+  return session;
+}
+
+/**
+ * Pushes a file to an open session, chunk by chunk.
+ *
+ * Reports progress after each chunk rather than continuously: `fetch` exposes
+ * no upload progress, and pulling in XMLHttpRequest for a finer bar is not
+ * worth it while a photo is a single chunk anyway.
+ */
+export async function uploadFileChunks(
+  sessionUrl: string,
+  file: File,
+  {
+    onProgress,
+    signal,
+  }: { onProgress?: (sent: number) => void; signal?: AbortSignal } = {},
+): Promise<DriveFile> {
+  let sent = 0;
+
+  // A zero-byte file still needs one request, or the session never completes.
+  do {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+
+    const end = Math.min(sent + CHUNK_BYTES, file.size);
+    const chunk = file.slice(sent, end);
+    const last = end >= file.size;
+
+    const range = file.size === 0
+      ? "bytes */0"
+      : `bytes ${sent}-${end - 1}/${file.size}`;
+
+    const response = await fetch(sessionUrl, {
+      method: "PUT",
+      headers: { "Content-Range": range },
+      body: chunk,
+      signal,
+    });
+
+    // 308 means "chunk stored, send the next one". Anything else in the 2xx
+    // range on a non-final chunk would be Google changing its mind.
+    if (response.status === 308) {
+      sent = end;
+      onProgress?.(sent);
+      continue;
+    }
+
+    if (response.ok) {
+      sent = end;
+      onProgress?.(sent);
+      if (!last) {
+        throw new DriveError(
+          response.status,
+          "Google cerró la subida antes de recibir el fichero completo.",
+        );
+      }
+      return (await response.json()) as DriveFile;
+    }
+
+    let detail = response.statusText;
+    try {
+      const body = (await response.json()) as { error?: { message?: string } };
+      if (body.error?.message) detail = body.error.message;
+    } catch {
+      // Not JSON; the status text will do.
+    }
+    throw new DriveError(response.status, detail);
+  } while (sent < file.size);
+
+  throw new DriveError(0, "La subida terminó sin respuesta de Google.");
 }
 
 export async function readJson<T>(

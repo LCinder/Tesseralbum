@@ -140,6 +140,12 @@ function Row({
         </div>
 
         <div className="flex items-baseline gap-4">
+          <Link
+            href={`/t/${souvenir.slug}`}
+            className="t-label shrink-0 text-accent hover:underline"
+          >
+            Ver álbum
+          </Link>
           <CopyButton value={url} />
           {!confirming && (
             <button

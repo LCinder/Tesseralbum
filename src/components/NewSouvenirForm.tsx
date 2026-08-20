@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import { PlaceSearch } from "@/components/PlaceSearch";
 import { SectionLabel } from "@/components/Shell";
@@ -215,7 +216,15 @@ function JustCreated({ souvenir }: { souvenir: Souvenir }) {
 
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <p className="break-all font-mono text-sm">{url}</p>
-        <CopyButton value={url} />
+        <span className="flex items-baseline gap-4">
+          <Link
+            href={`/t/${souvenir.slug}`}
+            className="t-label shrink-0 text-accent hover:underline"
+          >
+            Ver álbum
+          </Link>
+          <CopyButton value={url} />
+        </span>
       </div>
 
       <p className="text-[0.9rem] text-ink-soft">

@@ -3,10 +3,13 @@ import test from "node:test";
 import {
   SAME_TRIP_GAP_DAYS,
   belongsToSameTrip,
+  disambiguate,
   mergeSpans,
   monthLabel,
   monthName,
+  spanFromProperties,
   spanOf,
+  spanToProperties,
   tripPath,
   yearLabel,
 } from "./trips";
@@ -145,4 +148,54 @@ test("overlapping batches count as one trip", () => {
 
   assert.ok(belongsToSameTrip(a, b));
   assert.deepEqual(mergeSpans(a, b), a);
+});
+
+test("a free name is left alone", () => {
+  assert.equal(disambiguate("Septiembre", []), "Septiembre");
+  assert.equal(disambiguate("Septiembre", ["Octubre"]), "Septiembre");
+});
+
+test("two separate trips in one month get distinct folders", () => {
+  // 1-5 September and 25-30 September are 20 days apart, so not one trip —
+  // but both want to be called "Septiembre".
+  const early = { from: on(2025, 9, 1), to: on(2025, 9, 5) };
+  const late = { from: on(2025, 9, 25), to: on(2025, 9, 30) };
+
+  assert.equal(belongsToSameTrip(early, late), false);
+
+  const first = monthLabel(early);
+  assert.equal(disambiguate(monthLabel(late), [first]), "Septiembre (2)");
+});
+
+test("disambiguation keeps counting past the second collision", () => {
+  assert.equal(
+    disambiguate("Marzo", ["Marzo", "Marzo (2)", "Marzo (3)"]),
+    "Marzo (4)",
+  );
+});
+
+test("a span survives a round trip through folder properties", () => {
+  const span = { from: on(2025, 9, 29), to: on(2025, 10, 7) };
+  const restored = spanFromProperties(spanToProperties(span));
+
+  assert.equal(restored?.from.getTime(), span.from.getTime());
+  assert.equal(restored?.to.getTime(), span.to.getTime());
+});
+
+test("a folder without our properties is not mistaken for a trip", () => {
+  // Folders made by hand in Drive, or by an older version, must read as
+  // "not ours" rather than poison the same-trip comparison.
+  assert.equal(spanFromProperties(undefined), null);
+  assert.equal(spanFromProperties({}), null);
+  assert.equal(spanFromProperties({ tripFrom: "2025-09-29T00:00:00Z" }), null);
+  assert.equal(spanFromProperties({ tripFrom: "ayer", tripTo: "hoy" }), null);
+});
+
+test("a reversed span is rejected rather than silently swapped", () => {
+  const backwards = {
+    tripFrom: on(2025, 10, 7).toISOString(),
+    tripTo: on(2025, 9, 29).toISOString(),
+  };
+
+  assert.equal(spanFromProperties(backwards), null);
 });

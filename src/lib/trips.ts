@@ -115,3 +115,55 @@ export function mergeSpans(a: DateSpan, b: DateSpan): DateSpan {
     to: new Date(Math.max(a.to.getTime(), b.to.getTime())),
   };
 }
+
+/**
+ * Keeps a folder name unique among its siblings.
+ *
+ * Two separate trips can land in the same month — the 1st to the 5th and then
+ * the 25th to the 30th are 20 days apart, so they are not the same trip, yet
+ * both want to be called "Septiembre". Drive permits duplicate names, which
+ * would leave two identical folders and no way to tell them apart.
+ */
+export function disambiguate(name: string, taken: string[]): string {
+  if (!taken.includes(name)) return name;
+
+  for (let n = 2; n < 100; n += 1) {
+    const candidate = `${name} (${n})`;
+    if (!taken.includes(candidate)) return candidate;
+  }
+
+  // Ninety-nine trips to one country in one month is not a real case, but
+  // silently reusing a name would be worse than an obviously odd one.
+  return `${name} (${Date.now()})`;
+}
+
+/** Stored on the trip folder so a later batch can recognise it. */
+export type SpanProperties = {
+  tripFrom: string;
+  tripTo: string;
+};
+
+export function spanToProperties({ from, to }: DateSpan): SpanProperties {
+  return { tripFrom: from.toISOString(), tripTo: to.toISOString() };
+}
+
+/**
+ * Reads a span back off a folder's properties. Returns `null` for anything
+ * unparseable, so a folder created by hand — or by an older version — is
+ * treated as "not one of ours" instead of poisoning the comparison.
+ */
+export function spanFromProperties(
+  properties: Record<string, string> | undefined,
+): DateSpan | null {
+  if (!properties) return null;
+
+  const from = new Date(properties.tripFrom ?? "");
+  const to = new Date(properties.tripTo ?? "");
+
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) {
+    return null;
+  }
+  if (from.getTime() > to.getTime()) return null;
+
+  return { from, to };
+}
