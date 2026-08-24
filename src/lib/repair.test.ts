@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { DriveFile } from "./google/drive";
-import { changesFor, planFixes } from "./repair";
+import { changesFor, planFixes, planTripDate } from "./repair";
 import { spanToProperties } from "./trips";
 
 /**
@@ -224,7 +224,7 @@ test("folders we did not date are not ours to rename", () => {
   assert.deepEqual(survey.fixes, []);
 });
 
-test("a trip with nothing but weak dates is not second-guessed", () => {
+test("a trip with nothing but weak dates is handed back to the traveller", () => {
   const survey = planFixes({
     folders: [
       folder("y2026", "2026"),
@@ -236,10 +236,10 @@ test("a trip with nothing but weak dates is not second-guessed", () => {
     media: [photo("p1", "sin-pistas.jpg", "trip", at(2026, 8, 20), "file")],
   });
 
-  // Its file date is all there is and it agrees with what is stored, so there
-  // is nothing to change either way.
+  // Nothing to measure against, so nothing is rewritten on its own — but it
+  // is not silently blessed either.
   assert.deepEqual(survey.fixes, []);
-  assert.equal(survey.undatable, 0);
+  assert.equal(survey.unverifiable.length, 1);
 });
 
 test("an empty trip folder is reported, not stripped of its dates", () => {
@@ -310,6 +310,147 @@ test("nothing in an empty archive", () => {
     fixes: [],
     examined: 0,
     mixed: [],
+    unverifiable: [],
     undatable: 0,
   });
+});
+
+test("a trip with no camera date at all is not passed off as correct", () => {
+  // The bug the user hit: every photo fell back to the day it was copied, so
+  // the folder and the photos agreed with each other and were both wrong. The
+  // survey said "todo correcto" and offered nothing.
+  const survey = planFixes({
+    folders: [
+      folder("y2026", "2026"),
+      folder("trip", "Agosto", "y2026", {
+        from: at(2026, 8, 20),
+        to: at(2026, 8, 20),
+      }),
+    ],
+    media: [
+      photo("p1", "a.jpg", "trip", at(2026, 8, 20), "file"),
+      photo("p2", "b.jpg", "trip", at(2026, 8, 20), "file"),
+    ],
+  });
+
+  assert.deepEqual(survey.fixes, []);
+  assert.equal(survey.examined, 1);
+  assert.equal(survey.unverifiable.length, 1);
+  assert.deepEqual(survey.unverifiable[0].photoIds, ["p1", "p2"]);
+  assert.equal(survey.unverifiable[0].name, "Agosto");
+  assert.equal(survey.unverifiable[0].year, "2026");
+});
+
+test("file dates weeks apart are one undatable trip, not two journeys", () => {
+  // Files stored since November plus one recopied last week: with no camera
+  // date anywhere, calling this "two trips" would be reading meaning into
+  // timestamps that carry none.
+  const survey = planFixes({
+    folders: [
+      folder("y2025", "2025"),
+      folder("trip", "Noviembre-Agosto", "y2025", {
+        from: at(2025, 11, 18),
+        to: at(2026, 8, 20),
+      }),
+    ],
+    media: [
+      photo("p1", "a.jpg", "trip", at(2025, 11, 18), "file"),
+      photo("p2", "b.jpg", "trip", at(2025, 11, 22), "file"),
+      photo("p3", "c.jpg", "trip", at(2026, 8, 20), "file"),
+    ],
+  });
+
+  assert.deepEqual(survey.mixed, []);
+  assert.equal(survey.unverifiable.length, 1);
+  assert.equal(survey.unverifiable[0].photoIds.length, 3);
+});
+
+test("one camera date is enough to fix the folder without asking", () => {
+  const survey = planFixes({
+    folders: [
+      folder("y2025", "2025"),
+      folder("trip", "Noviembre-Agosto", "y2025", {
+        from: at(2025, 11, 18),
+        to: at(2026, 8, 20),
+      }),
+    ],
+    media: [
+      photo("p1", "a.jpg", "trip", at(2025, 11, 18)),
+      photo("p2", "b.jpg", "trip", at(2026, 8, 20), "file"),
+    ],
+  });
+
+  assert.deepEqual(survey.unverifiable, []);
+  assert.equal(survey.fixes.length, 1);
+  assert.equal(survey.fixes[0].rename, "Noviembre");
+});
+
+test("a typed date names the folder and dates every photo in it", () => {
+  const trip = {
+    folderId: "trip",
+    name: "Agosto",
+    year: "2026",
+    photoIds: ["p1", "p2", "p3"],
+    siblings: [],
+  };
+
+  const plan = planTripDate(trip, at(2025, 11, 18));
+
+  assert.equal(plan.rename, "Noviembre");
+  assert.equal(plan.photos, 3);
+  assert.equal(plan.span.from.getTime(), at(2025, 11, 18).getTime());
+  assert.equal(plan.span.to.getTime(), at(2025, 11, 18).getTime());
+  assert.deepEqual(plan.wrongYear, { holding: "2026", wanted: "2025" });
+});
+
+test("a typed date that keeps the folder's name is not a rename", () => {
+  const plan = planTripDate(
+    {
+      folderId: "trip",
+      name: "Noviembre",
+      year: "2025",
+      photoIds: ["p1"],
+      siblings: [],
+    },
+    at(2025, 11, 20),
+  );
+
+  assert.equal(plan.rename, "Noviembre");
+  assert.equal(plan.wrongYear, undefined);
+});
+
+test("a typed date avoids a sibling that already holds the name", () => {
+  const plan = planTripDate(
+    {
+      folderId: "trip",
+      name: "Agosto",
+      year: "2025",
+      photoIds: ["p1"],
+      siblings: ["Noviembre"],
+    },
+    at(2025, 11, 18),
+  );
+
+  assert.equal(plan.rename, "Noviembre (2)");
+});
+
+test("nothing wrong reads as nothing wrong", () => {
+  const survey = planFixes({
+    folders: [
+      folder("y2025", "2025"),
+      folder("trip", "Noviembre", "y2025", {
+        from: at(2025, 11, 18),
+        to: at(2025, 11, 22),
+      }),
+    ],
+    media: [
+      photo("p1", "a.jpg", "trip", at(2025, 11, 18)),
+      photo("p2", "b.jpg", "trip", at(2025, 11, 22)),
+    ],
+  });
+
+  assert.deepEqual(survey.fixes, []);
+  assert.deepEqual(survey.mixed, []);
+  assert.deepEqual(survey.unverifiable, []);
+  assert.equal(survey.undatable, 0);
 });

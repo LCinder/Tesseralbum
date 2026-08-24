@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { SectionLabel } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
-import { applyFixes, surveyTrips, type Survey } from "@/lib/repair";
+import { parseDay } from "@/lib/media";
+import {
+  applyFixes,
+  planTripDate,
+  setTripDate,
+  surveyTrips,
+  type Survey,
+  type Unverifiable,
+} from "@/lib/repair";
 
 /**
  * Repairing trip folders named before the dates were understood.
@@ -22,11 +30,13 @@ export function DateRepair() {
   const [applying, setApplying] = useState(false);
   const [fixed, setFixed] = useState<number | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   async function look() {
     setLooking(true);
     setProblem(null);
     setFixed(null);
+    setNote(null);
     try {
       setSurvey(await surveyTrips(getToken));
     } catch (cause) {
@@ -92,7 +102,33 @@ export function DateRepair() {
         </p>
       )}
 
-      {survey && <Plan survey={survey} />}
+      {note && (
+        <p
+          role="status"
+          className="mt-4 border-l-[3px] border-teal bg-teal-bg px-4 py-3 text-[0.95rem]"
+        >
+          {note}
+        </p>
+      )}
+
+      {survey && (
+        <Plan
+          survey={survey}
+          onDone={(note) => {
+            setSurvey(null);
+            setNote(note);
+          }}
+        />
+      )}
+
+      {note && (
+        <p
+          role="status"
+          className="mt-4 border-l-[3px] border-teal bg-teal-bg px-4 py-3 text-[0.95rem]"
+        >
+          {note}
+        </p>
+      )}
 
       {survey && (
         <div className="mt-5 flex flex-wrap items-baseline gap-5">
@@ -129,8 +165,14 @@ export function DateRepair() {
 }
 
 /** What the survey found, before anything is written. */
-function Plan({ survey }: { survey: Survey }) {
-  const { fixes, examined, mixed, undatable } = survey;
+function Plan({
+  survey,
+  onDone,
+}: {
+  survey: Survey;
+  onDone: (note: string) => void;
+}) {
+  const { fixes, examined, mixed, unverifiable, undatable } = survey;
 
   if (examined === 0) {
     return (
@@ -142,11 +184,7 @@ function Plan({ survey }: { survey: Survey }) {
 
   return (
     <div className="mt-4 border-l-[3px] border-teal bg-teal-bg px-4 py-4">
-      <p className="t-label mb-3 text-teal">
-        {fixes.length === 0
-          ? `${examined} ${examined === 1 ? "viaje revisado" : "viajes revisados"} · todo correcto`
-          : `${fixes.length} de ${examined} ${examined === 1 ? "viaje" : "viajes"} con las fechas mal`}
-      </p>
+      <p className="t-label mb-3 text-teal">{headline(survey)}</p>
 
       {fixes.length > 0 && (
         <ul className="flex flex-col gap-3">
@@ -188,6 +226,25 @@ function Plan({ survey }: { survey: Survey }) {
         </ul>
       )}
 
+      {unverifiable.length > 0 && (
+        <div className="mt-4">
+          <p className="t-label mb-1 text-teal">Esto lo tienes que decir tú</p>
+          <p className="mb-2 text-[0.9rem]">
+            {unverifiable.length === 1
+              ? "Este viaje no tiene"
+              : "Estos viajes no tienen"}{" "}
+            ninguna foto con fecha de cámara: todas cayeron a la fecha del
+            fichero, así que la carpeta y las fotos están de acuerdo entre ellas
+            y equivocadas a la vez. Nada puede deducir cuándo fue.
+          </p>
+          <ul className="flex flex-col gap-4">
+            {unverifiable.map((trip) => (
+              <TripDate key={trip.folderId} trip={trip} onDone={onDone} />
+            ))}
+          </ul>
+        </div>
+      )}
+
       {mixed.length > 0 && (
         <div className="mt-4">
           <p className="text-[0.9rem]">
@@ -222,4 +279,125 @@ function Plan({ survey }: { survey: Survey }) {
       )}
     </div>
   );
+}
+
+/**
+ * One trip nobody can date automatically, and the field that dates it.
+ *
+ * The cost is spelled out on the button rather than after the fact: this writes
+ * to every photo in the trip, which is thirty requests where the rest of this
+ * panel spends one, and that is worth knowing before pressing it.
+ */
+function TripDate({
+  trip,
+  onDone,
+}: {
+  trip: Unverifiable;
+  onDone: (note: string) => void;
+}) {
+  const { getToken } = useSession();
+
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const when = parseDay(typed);
+  const plan = when ? planTripDate(trip, when) : null;
+  const photos = trip.photoIds.length;
+
+  async function save() {
+    if (!when || !plan) return;
+
+    setBusy({ done: 0, total: photos + 1 });
+    setProblem(null);
+    try {
+      await setTripDate(getToken, trip, when, {
+        onProgress: (done, total) => setBusy({ done, total }),
+      });
+      onDone(
+        `${photos} ${photos === 1 ? "foto fechada" : "fotos fechadas"}, y la carpeta pasa a llamarse ${plan.rename}.`,
+      );
+    } catch (cause) {
+      setProblem(
+        cause instanceof Error ? cause.message : "No se pudo guardar la fecha.",
+      );
+      setBusy(null);
+    }
+  }
+
+  return (
+    <li>
+      <p className="break-all font-mono text-sm">
+        {trip.year}/{trip.name}
+        <span className="ml-2 font-sans text-ink-soft">
+          {photos} {photos === 1 ? "foto" : "fotos"}
+        </span>
+      </p>
+
+      <div className="mt-1 flex flex-wrap items-baseline gap-3">
+        <input
+          type="date"
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+          disabled={busy !== null}
+          className="border border-rule bg-surface px-2 py-1 font-mono text-sm tabular-nums disabled:opacity-60"
+        />
+        {plan && (
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={busy !== null}
+            className="t-label cursor-pointer font-semibold text-accent hover:underline disabled:cursor-wait disabled:opacity-60"
+          >
+            {busy
+              ? `Guardando ${busy.done}/${busy.total}…`
+              : `Fechar ${photos} ${photos === 1 ? "foto" : "fotos"} y renombrar a ${plan.rename}`}
+          </button>
+        )}
+      </div>
+
+      {plan && (
+        <p className="mt-1 text-[0.85rem] text-ink-soft">
+          Se escribe en cada foto, no solo en la carpeta: son {photos + 1}{" "}
+          llamadas a Drive. El álbum y el mapa leen la foto, así que arreglar
+          solo la carpeta no cambiaría nada de lo que se ve.
+        </p>
+      )}
+
+      {plan?.wrongYear && (
+        <p className="mt-1 text-[0.9rem]">
+          Está guardado en {plan.wrongYear.holding} y por esa fecha le toca{" "}
+          {plan.wrongYear.wanted}. Se le arregla el nombre, pero moverlo de
+          carpeta tendrás que hacerlo desde Drive.
+        </p>
+      )}
+
+      {problem && (
+        <p role="alert" className="mt-1 text-sm text-accent">
+          {problem}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/** What the survey found, said without rounding it up to "todo correcto". */
+function headline({ fixes, examined, mixed, unverifiable }: Survey): string {
+  const trips = examined === 1 ? "viaje" : "viajes";
+
+  if (fixes.length > 0) {
+    return `${fixes.length} de ${examined} ${trips} con las fechas mal`;
+  }
+
+  // Nothing to rewrite is not the same as nothing wrong: a trip nobody can
+  // date, or one holding two journeys, is reported below, and saying
+  // "todo correcto" over the top of it was simply untrue.
+  const stuck = mixed.length + unverifiable.length;
+  if (stuck > 0) {
+    return `${examined} ${trips} revisados · ${stuck} que no puedo arreglar solo`;
+  }
+
+  return `${examined} ${examined === 1 ? "viaje revisado" : "viajes revisados"} · todo correcto`;
 }
