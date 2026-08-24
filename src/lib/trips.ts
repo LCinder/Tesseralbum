@@ -95,6 +95,39 @@ export function undatedFor<T extends Dated>(items: T[]): T[] {
 }
 
 /**
+ * The span drawn only from dates the camera wrote, or null when there are none.
+ *
+ * Unlike `clusterTrips` this never falls back to file dates: its job is to be
+ * the yardstick a weak date is measured against, and a yardstick made of the
+ * same bad material would measure nothing.
+ */
+export function trustedSpan<T extends Dated>(items: T[]): DateSpan | null {
+  return spanOf(
+    items
+      .filter((item) => TRUSTED_SOURCES.has(item.dateSource))
+      .map((item) => item.takenAt),
+  );
+}
+
+/**
+ * Whether the rest of the trip proves an item's date wrong.
+ *
+ * Only ever true of a weak date. The same fortnight of slack the trip grouping
+ * uses: a file date a few days outside the trip is plausibly the real thing —
+ * a photo taken on the way home — while one months outside is the copy date
+ * masquerading as a capture date.
+ */
+export function contradicts(span: DateSpan, item: Dated): boolean {
+  if (!item.takenAt) return false;
+  if (TRUSTED_SOURCES.has(item.dateSource)) return false;
+
+  const when = item.takenAt.getTime();
+  const slack = SAME_TRIP_GAP_DAYS * DAY;
+
+  return when < span.from.getTime() - slack || when > span.to.getTime() + slack;
+}
+
+/**
  * Splits a selection into the trips it actually contains.
  *
  * Picking a year of photos at once used to produce a single folder spanning the

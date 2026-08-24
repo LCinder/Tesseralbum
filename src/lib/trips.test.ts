@@ -11,6 +11,8 @@ import {
   spanFromProperties,
   spanOf,
   spanToProperties,
+  contradicts,
+  trustedSpan,
   tripPath,
   undatedFor,
   yearLabel,
@@ -345,4 +347,54 @@ test("nothing to report when every photo carries a camera date", () => {
     [],
   );
   assert.deepEqual(undatedFor([]), []);
+});
+
+test("the yardstick is made only of camera dates", () => {
+  const batch = [
+    shot(on(2025, 11, 18)),
+    shot(on(2025, 11, 22), "name"),
+    shot(on(2026, 8, 20), "file"),
+  ];
+
+  const span = trustedSpan(batch);
+
+  assert.equal(span?.from.getTime(), on(2025, 11, 18).getTime());
+  assert.equal(span?.to.getTime(), on(2025, 11, 22).getTime());
+});
+
+test("with no camera date there is no yardstick, so nothing is judged", () => {
+  const batch = [shot(on(2026, 8, 20), "file"), shot(null, "none")];
+
+  assert.equal(trustedSpan(batch), null);
+});
+
+test("a file date months outside the trip is contradicted", () => {
+  const span = { from: on(2025, 11, 18), to: on(2025, 11, 22) };
+
+  assert.equal(contradicts(span, shot(on(2026, 8, 20), "file")), true);
+});
+
+test("a camera date is never contradicted, however odd", () => {
+  // The camera's own answer is the best there is. A trip that really did run
+  // over Christmas is not a mistake to be corrected.
+  const span = { from: on(2025, 11, 18), to: on(2025, 11, 22) };
+
+  assert.equal(contradicts(span, shot(on(2026, 8, 20))), false);
+  assert.equal(contradicts(span, shot(on(2026, 8, 20), "name")), false);
+});
+
+test("a file date just outside the trip is left alone", () => {
+  // A photo taken on the way home, or a camera clock a day out. Within the
+  // same fortnight the trip grouping uses, it is plausibly the real date.
+  const span = { from: on(2025, 11, 18), to: on(2025, 11, 22) };
+
+  assert.equal(contradicts(span, shot(on(2025, 11, 25), "file")), false);
+  assert.equal(contradicts(span, shot(on(2025, 11, 20), "file")), false);
+  assert.equal(contradicts(span, shot(on(2025, 12, 20), "file")), true);
+});
+
+test("no date at all is not a contradiction", () => {
+  const span = { from: on(2025, 11, 18), to: on(2025, 11, 22) };
+
+  assert.equal(contradicts(span, shot(null, "none")), false);
 });
