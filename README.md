@@ -61,6 +61,35 @@ De ahí que **un lugar tenga un solo chip**: volver a un sitio no necesita otra
 pegatina, porque lo que distingue las visitas son las fechas de las fotos. Dar
 de alta una ciudad que ya tienes te devuelve la URL que ya tenía.
 
+## De dónde sale la fecha de una foto
+
+Por orden de fiabilidad:
+
+1. **EXIF** — lo que escribió la cámara.
+2. **El nombre del fichero** — `IMG-20251118-WA0012.jpg`, `PXL_20251118_...`. Es
+   la cámara escribiendo la fecha en otro sitio, y sobrevive a que WhatsApp
+   borre el EXIF.
+3. **Las fotos de al lado** — si una perdió su fecha, las de antes y después en
+   la misma tanda la tienen, y se hizo a minutos de ellas. Se coge la del vecino
+   más cercano por nombre (en orden numérico: `IMG_2` va antes de `IMG_10`).
+4. **La que escribas tú**, si no hay nada de lo anterior.
+
+`File.lastModified` **no** está en esa lista como fuente buena: copiar, exportar,
+sincronizar o reenviar un fichero la pone a *hoy*. Se usa solo cuando no hay nada
+mejor, y aun así con una salvedad importante: cuando ninguna foto del viaje trae
+fecha de cámara, las marcas de tiempo no son todas malas por igual — coinciden
+entre sí en los ficheros intactos y se desvían justo en los que se copiaron. Así
+que el grupo en el que cae la mayoría es el viaje, y los sueltos toman la fecha
+de sus vecinos.
+
+Solo si es la mayoría de verdad. Un empate entre dos grupos son **dos viajes**
+subidos juntos, no uno con rezagados, y elegir ganador ahí movería media tanda al
+mes equivocado.
+
+Todo esto se aplica en tres sitios con la misma función, así que no pueden
+discrepar: al subir (y se guarda en la foto), al leer el álbum (sin escribir nada,
+lo que repara álbumes de antes) y al renombrar carpetas desde `/admin`.
+
 ## Recalcular fechas
 
 Cada carpeta de viaje lleva en sus propias `appProperties` el rango que cubre, y

@@ -64,20 +64,55 @@ export type Dated = { takenAt: Date | null; dateSource: string };
  * syncing, exporting or downloading all reset to *now* — so a photo from last
  * November arrives claiming today, and one such photo is enough to stretch a
  * trip across nine months and name its folder "Noviembre-Agosto".
+ *
+ * A `manual` date was typed in by the traveller and a `nearby` one was taken
+ * from the photos either side of it, which is the neighbours' own date and no
+ * weaker for having been passed along.
  */
-const TRUSTED_SOURCES = new Set(["exif", "name", "manual"]);
+const TRUSTED_SOURCES = new Set(["exif", "name", "manual", "nearby"]);
 
 /** Whether a date from this source is worth basing a folder name on. */
 export function isTrustedDate(dateSource: string): boolean {
   return TRUSTED_SOURCES.has(dateSource);
 }
 
-function usableDates<T extends Dated>(items: T[]): T[] {
-  const dated = items.filter(
-    (item) =>
-      item.takenAt instanceof Date && Number.isFinite(item.takenAt.getTime()),
+/** Whether an item carries a date that can be read at all. */
+function hasDate<T extends Dated>(item: T): boolean {
+  return (
+    item.takenAt instanceof Date && Number.isFinite(item.takenAt.getTime())
+  );
+}
+
+/**
+ * Groups dated items by the gaps between them, oldest first.
+ *
+ * The seam is the same fortnight that decides whether a later upload joins a
+ * trip already on disk, so a batch is split exactly where a second visit
+ * would have been given its own folder.
+ */
+function clustersOf<T extends Dated>(dated: T[]): T[][] {
+  if (dated.length === 0) return [];
+
+  const sorted = [...dated].sort(
+    (a, b) => (a.takenAt as Date).getTime() - (b.takenAt as Date).getTime(),
   );
 
+  const clusters: T[][] = [[sorted[0]]];
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const previous = (sorted[i - 1].takenAt as Date).getTime();
+    const current = (sorted[i].takenAt as Date).getTime();
+
+    if (current - previous > SAME_TRIP_GAP_DAYS * DAY)
+      clusters.push([sorted[i]]);
+    else clusters[clusters.length - 1].push(sorted[i]);
+  }
+
+  return clusters;
+}
+
+function usableDates<T extends Dated>(items: T[]): T[] {
+  const dated = items.filter(hasDate);
   const trusted = dated.filter((item) => TRUSTED_SOURCES.has(item.dateSource));
 
   // Trusted dates win outright when any exist. Only when the whole batch has
@@ -115,21 +150,95 @@ export function trustedSpan<T extends Dated>(items: T[]): DateSpan | null {
 }
 
 /**
- * Whether the rest of the trip proves an item's date wrong.
+ * The items whose dates are solid enough to date the others from.
  *
- * Only ever true of a weak date. The same fortnight of slack the trip grouping
- * uses: a file date a few days outside the trip is plausibly the real thing —
- * a photo taken on the way home — while one months outside is the copy date
- * masquerading as a capture date.
+ * A camera date, a date read off a filename or one the traveller typed in is
+ * an anchor outright. When a batch has none of those, filesystem timestamps
+ * are all there is — and they are not uniformly wrong: they agree with each
+ * other for every file that was left alone, and disagree only where one was
+ * copied, exported or forwarded, which stamps it with the day that happened.
+ * So the group most of them fall into is the trip, and the strays are copies.
+ *
+ * Only when it really is most of them. An even split between two groups is two
+ * journeys uploaded together, not one journey with stragglers, and picking a
+ * winner there would quietly move half the photos to the wrong month.
  */
-export function contradicts(span: DateSpan, item: Dated): boolean {
-  if (!item.takenAt) return false;
-  if (TRUSTED_SOURCES.has(item.dateSource)) return false;
+function anchorsIn<T extends Dated>(items: T[]): Set<T> {
+  const dated = items.filter(hasDate);
+  if (dated.length === 0) return new Set();
 
-  const when = item.takenAt.getTime();
-  const slack = SAME_TRIP_GAP_DAYS * DAY;
+  const trusted = dated.filter((item) => TRUSTED_SOURCES.has(item.dateSource));
+  if (trusted.length > 0) return new Set(trusted);
 
-  return when < span.from.getTime() - slack || when > span.to.getTime() + slack;
+  const clusters = clustersOf(dated);
+  if (clusters.length <= 1) return new Set(dated);
+
+  const biggest = clusters.reduce((best, candidate) =>
+    candidate.length > best.length ? candidate : best,
+  );
+
+  return biggest.length * 2 > dated.length ? new Set(biggest) : new Set(dated);
+}
+
+/** Something dated that also has a name, so its neighbours can be found. */
+export type Sequenced = Dated & { name: string };
+
+/**
+ * The date each unanchored item should borrow, taken from the photos beside it.
+ *
+ * Photos come off a camera in order and are named in that order, so the file
+ * either side of one that lost its date was almost certainly taken minutes
+ * from it. That neighbour's date is a far better answer than the day the file
+ * happened to be copied, and it costs nothing to look.
+ *
+ * Returns only the items it can answer for, so a caller applies the dates in
+ * whatever shape its own records take. An item with no anchor anywhere in the
+ * batch is left out rather than given an invented date.
+ */
+export function inferDates<T extends Sequenced>(items: T[]): Map<T, Date> {
+  const inferred = new Map<T, Date>();
+
+  const anchors = anchorsIn(items);
+  if (anchors.size === 0 || anchors.size === items.length) return inferred;
+
+  // The order the camera produced them, which is what makes two files
+  // neighbours. Numeric, or IMG_10 would sit before IMG_2.
+  const order = [...items].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true }),
+  );
+
+  const before: number[] = new Array(order.length).fill(-1);
+  const after: number[] = new Array(order.length).fill(-1);
+
+  let last = -1;
+  for (let i = 0; i < order.length; i += 1) {
+    before[i] = last;
+    if (anchors.has(order[i])) last = i;
+  }
+
+  last = -1;
+  for (let i = order.length - 1; i >= 0; i -= 1) {
+    after[i] = last;
+    if (anchors.has(order[i])) last = i;
+  }
+
+  for (let i = 0; i < order.length; i += 1) {
+    const item = order[i];
+    if (anchors.has(item)) continue;
+
+    // The closer of the two neighbours by position in the sequence, and the
+    // one before it when they are equally close: a photo tends to belong with
+    // what came before it rather than what interrupted it.
+    const back = before[i] < 0 ? Infinity : i - before[i];
+    const forward = after[i] < 0 ? Infinity : after[i] - i;
+
+    if (back === Infinity && forward === Infinity) continue;
+
+    const source = order[back <= forward ? before[i] : after[i]];
+    inferred.set(item, source.takenAt as Date);
+  }
+
+  return inferred;
 }
 
 /**
@@ -150,20 +259,7 @@ export function clusterTrips<T extends Dated>(
   const usable = usableDates(items);
   if (usable.length === 0) return [];
 
-  const sorted = [...usable].sort(
-    (a, b) => (a.takenAt as Date).getTime() - (b.takenAt as Date).getTime(),
-  );
-
-  const clusters: T[][] = [[sorted[0]]];
-
-  for (let i = 1; i < sorted.length; i += 1) {
-    const previous = (sorted[i - 1].takenAt as Date).getTime();
-    const current = (sorted[i].takenAt as Date).getTime();
-
-    if (current - previous > SAME_TRIP_GAP_DAYS * DAY)
-      clusters.push([sorted[i]]);
-    else clusters[clusters.length - 1].push(sorted[i]);
-  }
+  const clusters = clustersOf(usable);
 
   const grouped = clusters.map((members) => ({
     span: spanOf(members.map((member) => member.takenAt)) as DateSpan,

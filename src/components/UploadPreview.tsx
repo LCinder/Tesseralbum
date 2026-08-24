@@ -17,6 +17,7 @@ import {
   parseDay,
   readSelection,
   withManualDate,
+  withNeighbourDates,
   type MediaFile,
 } from "@/lib/media";
 import { readQuota } from "@/lib/google/drive";
@@ -186,16 +187,23 @@ export function UploadPreview({
   // about itself, plus a typed-in date for the ones that said nothing. The
   // preview, the folder names and the upload all read this, so none of them
   // can disagree with what is on screen.
+  // Photos come off a camera in order, so a file that lost its date sits
+  // between two that kept theirs. Borrowing from them rescues a batch of
+  // forwarded photos without asking anything, and covers the common case: a
+  // few files recopied last week among twenty left alone since the trip.
+  const found = withNeighbourDates(media ?? []);
+
+  // Only for whatever had no neighbour to borrow from — a batch copied all
+  // at once has nothing to go on but the traveller.
   const typedDay = parseDay(typed);
-  const items = typedDay
-    ? withManualDate(media ?? [], typedDay)
-    : (media ?? []);
+  const items = typedDay ? withManualDate(found, typedDay) : found;
 
   const trips = clusterTrips(items);
 
   // Whatever the split could not place. Counted rather than listed: the table
   // below already names every file.
   const undated = undatedFor(items).length;
+  const borrowed = items.filter((item) => item.dateSource === "nearby").length;
   const states = progress?.states;
 
   const counts = tally(states);
@@ -274,14 +282,21 @@ export function UploadPreview({
               </ul>
             )}
 
+            {borrowed > 0 && (
+              <p className="mt-3 text-[0.9rem]">
+                {borrowed}{" "}
+                {borrowed === 1 ? "fichero no traía" : "ficheros no traían"}{" "}
+                fecha propia y ha tomado la de las fotos de al lado. La del
+                sistema se pone al día sola al copiar un fichero, así que no
+                sirve; las vecinas de la misma tanda sí.
+              </p>
+            )}
+
             {undated > 0 && (
               <div className="mt-4 border-t border-teal/30 pt-3">
                 <p className="text-[0.9rem]">
-                  {undated} {undated === 1 ? "fichero" : "ficheros"} sin fecha
-                  de cámara.{" "}
-                  {trips.length > 0
-                    ? "No cuentan para decidir las fechas del viaje — la del sistema se pone al día sola al copiar un fichero — y van con el viaje más grande."
-                    : "Ninguno trae fecha, así que no hay con qué decidir la carpeta."}
+                  {undated} {undated === 1 ? "fichero" : "ficheros"} sin fecha,
+                  y sin ninguna foto cerca de la que sacarla.
                 </p>
                 <label className="mt-2 flex flex-wrap items-baseline gap-2 text-[0.9rem]">
                   <span>Si sabes de cuándo son:</span>
@@ -294,12 +309,11 @@ export function UploadPreview({
                   />
                 </label>
                 <p className="mt-1 text-[0.85rem] text-ink-soft">
-                  Solo se aplica a esos ficheros. Las fotos que traen fecha de
-                  cámara no se tocan.
+                  Solo se aplica a esos. Las que traen fecha de cámara no se
+                  tocan.
                 </p>
               </div>
             )}
-
             {progress?.folder?.renamedFrom && (
               <p className="mt-3 text-[0.9rem]">
                 Este lote alarga un viaje que ya estaba subido: la carpeta{" "}

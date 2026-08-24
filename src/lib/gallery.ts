@@ -7,12 +7,7 @@ import {
 } from "@/lib/google/drive";
 import { dateFromName, type Provenance } from "@/lib/media";
 import { memo } from "@/lib/memo";
-import {
-  contradicts,
-  spanFromProperties,
-  trustedSpan,
-  type DateSpan,
-} from "@/lib/trips";
+import { inferDates, spanFromProperties, type DateSpan } from "@/lib/trips";
 
 /**
  * Reading the album back out of Drive.
@@ -90,7 +85,8 @@ export function shotDate(file: DriveFile): {
   return dateOf(file, file.appProperties ?? {});
 }
 
-function toShot(file: DriveFile): Shot {
+/** Everything the app knows about one photo, read off the file. */
+export function toShot(file: DriveFile): Shot {
   const properties = file.appProperties ?? {};
 
   const { takenAt, dateSource } = dateOf(file, properties);
@@ -113,28 +109,30 @@ function toShot(file: DriveFile): Shot {
 }
 
 /**
- * Drops a date the rest of the trip contradicts.
+ * Fills in the dates Drive could not answer for, from the photos beside them.
  *
  * A photo with no EXIF and no date in its name falls back to the day the file
  * was written, which for anything copied, exported or forwarded is the day it
- * was copied. Showing that is worse than showing nothing: the album states, in
- * the corner of the thumbnail, that a photo from last November was taken this
- * month. Nothing can recover the real date — but the trip it sits in already
- * says roughly when, and an empty corner does not lie.
+ * was copied — so the album printed, in the corner of the thumbnail, that a
+ * photo from last November was taken this month.
  *
- * Judged against the trip's own camera dates rather than the folder's stored
- * span, because that span is the thing that was wrong: this has to be right
- * before the folder is repaired, and stay right after.
+ * Photos come off a camera in order and are named in that order, so the file
+ * either side of one that lost its date was almost certainly taken minutes
+ * from it. Borrowing from it beats both the copy date and an empty corner.
+ *
+ * Done on the way out of Drive rather than written into it: it costs no
+ * requests, and it repairs an album uploaded long before any of this existed.
  */
-export function withoutFalseDates(shots: Shot[]): Shot[] {
-  const trusted = trustedSpan(shots);
-  if (!trusted) return shots;
+export function withNeighbourDates(shots: Shot[]): Shot[] {
+  const inferred = inferDates(shots);
+  if (inferred.size === 0) return shots;
 
-  return shots.map((shot) =>
-    contradicts(trusted, shot)
-      ? { ...shot, takenAt: null, dateSource: "none" as const }
-      : shot,
-  );
+  return shots.map((shot) => {
+    const when = inferred.get(shot);
+    return when
+      ? { ...shot, takenAt: when, dateSource: "nearby" as const }
+      : shot;
+  });
 }
 
 /**
@@ -194,7 +192,7 @@ export async function listTrips(
       name: folder.name,
       year: yearFolder?.name ?? "",
       span: spanFromProperties(folder.appProperties),
-      shots: withoutFalseDates(shots).sort(byDateThenName),
+      shots: withNeighbourDates(shots).sort(byDateThenName),
     });
   }
 

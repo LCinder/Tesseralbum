@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   byDateThenName,
   byTripDate,
-  withoutFalseDates,
+  withNeighbourDates,
   type Shot,
   type Trip,
 } from "./gallery";
@@ -131,21 +131,53 @@ test("photos sharing a date fall back to a human reading of the number", () => {
   ]);
 });
 
-test("a date the rest of the trip disproves is not shown at all", () => {
+test("a photo copied later takes the date of the trip around it", () => {
   // The reported case: the album put "20/8/2026" in the corner of a photo
-  // taken in November, because that is the day the file was copied.
+  // taken in November, because that is the day the file was copied. The
+  // photos either side of it knew better.
   const shots = [
     shot("a.jpg", on(2025, 11, 18)),
     shot("b.jpg", on(2025, 11, 22)),
     shot("copiada.jpg", on(2026, 8, 20), "file"),
   ];
 
-  const cleaned = withoutFalseDates(shots);
+  const cleaned = withNeighbourDates(shots);
   const copied = cleaned.find((one) => one.name === "copiada.jpg");
 
-  assert.equal(copied?.takenAt, null);
-  assert.equal(copied?.dateSource, "none");
+  assert.equal(copied?.takenAt?.getMonth(), 10);
+  assert.equal(copied?.takenAt?.getFullYear(), 2025);
+  assert.equal(copied?.dateSource, "nearby");
   assert.equal(cleaned.length, 3, "the photo itself is still in the album");
+});
+
+test("a lone photo with only a copy date keeps it, having nothing to borrow", () => {
+  // One photo, no neighbours, no camera date anywhere. There is nothing to
+  // correct it with, and inventing a date would be worse than the honest
+  // wrong one the filesystem gave.
+  const shots = [shot("c.jpg", on(2026, 8, 20), "file")];
+
+  const cleaned = withNeighbourDates(shots);
+
+  assert.equal(cleaned[0].takenAt?.getTime(), on(2026, 8, 20).getTime());
+  assert.equal(cleaned[0].dateSource, "file");
+});
+
+test("two trips uploaded together are not collapsed into one", () => {
+  // An even split of file dates is two journeys, so neither half is
+  // rewritten to look like the other.
+  const shots = [
+    shot("a1.jpg", on(2025, 4, 2), "file"),
+    shot("a2.jpg", on(2025, 4, 3), "file"),
+    shot("b1.jpg", on(2025, 11, 18), "file"),
+    shot("b2.jpg", on(2025, 11, 19), "file"),
+  ];
+
+  const cleaned = withNeighbourDates(shots);
+
+  assert.deepEqual(
+    cleaned.map((one) => one.takenAt?.getMonth()),
+    [3, 3, 10, 10],
+  );
 });
 
 test("the photos with real dates come through untouched", () => {
@@ -154,7 +186,7 @@ test("the photos with real dates come through untouched", () => {
     shot("copiada.jpg", on(2026, 8, 20), "file"),
   ];
 
-  const kept = withoutFalseDates(shots).find((one) => one.name === "a.jpg");
+  const kept = withNeighbourDates(shots).find((one) => one.name === "a.jpg");
 
   assert.equal(kept?.takenAt?.getTime(), on(2025, 11, 18).getTime());
   assert.equal(kept?.dateSource, "exif");
@@ -168,14 +200,14 @@ test("a trip with no camera dates keeps what it has", () => {
     shot("b.jpg", on(2026, 8, 20), "file"),
   ];
 
-  const cleaned = withoutFalseDates(shots);
+  const cleaned = withNeighbourDates(shots);
 
   assert.equal(cleaned[0].takenAt?.getTime(), on(2026, 8, 20).getTime());
   assert.equal(cleaned[1].takenAt?.getTime(), on(2026, 8, 20).getTime());
 });
 
 test("a photo stripped of its date sorts last rather than out of order", () => {
-  const shots = withoutFalseDates([
+  const shots = withNeighbourDates([
     shot("a.jpg", on(2025, 11, 18)),
     shot("copiada.jpg", on(2026, 8, 20), "file"),
     shot("b.jpg", on(2025, 11, 22)),

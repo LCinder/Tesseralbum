@@ -73,11 +73,13 @@ export function DateRepair() {
       <SectionLabel>Fechas</SectionLabel>
 
       <p className="mb-4 max-w-xl text-[0.95rem] text-ink-soft">
-        Las carpetas subidas antes de que la app distinguiera la fecha de la
-        cámara de la del sistema pueden llevar un nombre imposible, tipo{" "}
-        <span className="font-mono">Noviembre-Agosto</span>. Esto recalcula las
-        fechas de cada viaje a partir de las fotos que tiene dentro. No mueve ni
-        borra nada: solo renombra carpetas.
+        Las carpetas subidas antes de que la app supiera leer bien las fechas
+        pueden llevar un nombre imposible, tipo{" "}
+        <span className="font-mono">Noviembre-Agosto</span>. Esto recalcula el
+        nombre de cada viaje leyendo sus fotos igual que el álbum: la fecha de
+        la cámara, la del nombre del fichero, y para las que no tengan ninguna,
+        la de las fotos de al lado. No mueve ni borra nada: solo renombra
+        carpetas.
       </p>
 
       {!survey && (
@@ -119,15 +121,6 @@ export function DateRepair() {
             setNote(note);
           }}
         />
-      )}
-
-      {note && (
-        <p
-          role="status"
-          className="mt-4 border-l-[3px] border-teal bg-teal-bg px-4 py-3 text-[0.95rem]"
-        >
-          {note}
-        </p>
       )}
 
       {survey && (
@@ -233,9 +226,10 @@ function Plan({
             {unverifiable.length === 1
               ? "Este viaje no tiene"
               : "Estos viajes no tienen"}{" "}
-            ninguna foto con fecha de cámara: todas cayeron a la fecha del
-            fichero, así que la carpeta y las fotos están de acuerdo entre ellas
-            y equivocadas a la vez. Nada puede deducir cuándo fue.
+            ni una sola fecha aprovechable: ninguna foto trae la de la cámara, y
+            las del fichero son todas del mismo día, así que tampoco hay una
+            vecina de la que sacarla. Esto solo pasa si copiaste la tanda entera
+            de golpe.
           </p>
           <ul className="flex flex-col gap-4">
             {unverifiable.map((trip) => (

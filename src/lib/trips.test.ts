@@ -11,7 +11,8 @@ import {
   spanFromProperties,
   spanOf,
   spanToProperties,
-  contradicts,
+  inferDates,
+  isTrustedDate,
   trustedSpan,
   tripPath,
   undatedFor,
@@ -368,33 +369,159 @@ test("with no camera date there is no yardstick, so nothing is judged", () => {
   assert.equal(trustedSpan(batch), null);
 });
 
-test("a file date months outside the trip is contradicted", () => {
-  const span = { from: on(2025, 11, 18), to: on(2025, 11, 22) };
-
-  assert.equal(contradicts(span, shot(on(2026, 8, 20), "file")), true);
+const named = (name: string, at: Date | null, dateSource = "exif") => ({
+  name,
+  takenAt: at,
+  dateSource,
 });
 
-test("a camera date is never contradicted, however odd", () => {
-  // The camera's own answer is the best there is. A trip that really did run
-  // over Christmas is not a mistake to be corrected.
-  const span = { from: on(2025, 11, 18), to: on(2025, 11, 22) };
+test("a photo that lost its date takes it from the one beside it", () => {
+  const batch = [
+    named("IMG_0001.jpg", on(2025, 11, 18)),
+    named("IMG_0002.jpg", null, "none"),
+    named("IMG_0003.jpg", on(2025, 11, 18)),
+  ];
 
-  assert.equal(contradicts(span, shot(on(2026, 8, 20))), false);
-  assert.equal(contradicts(span, shot(on(2026, 8, 20), "name")), false);
+  const inferred = inferDates(batch);
+
+  assert.equal(inferred.size, 1);
+  assert.equal(inferred.get(batch[1])?.getTime(), on(2025, 11, 18).getTime());
 });
 
-test("a file date just outside the trip is left alone", () => {
-  // A photo taken on the way home, or a camera clock a day out. Within the
-  // same fortnight the trip grouping uses, it is plausibly the real date.
-  const span = { from: on(2025, 11, 18), to: on(2025, 11, 22) };
+test("the reported case: recopied files borrow from the ones left alone", () => {
+  // Twenty files kept their November timestamps; three were recopied last
+  // week and got today. No EXIF anywhere -- so the twenty are the trip.
+  const batch = [
+    ...Array.from({ length: 20 }, (_, i) =>
+      named(
+        `IMG_${String(i + 1).padStart(4, "0")}.jpg`,
+        on(2025, 11, 18),
+        "file",
+      ),
+    ),
+    named("IMG_0021.jpg", on(2026, 8, 20), "file"),
+    named("IMG_0022.jpg", on(2026, 8, 20), "file"),
+    named("IMG_0023.jpg", on(2026, 8, 20), "file"),
+  ];
 
-  assert.equal(contradicts(span, shot(on(2025, 11, 25), "file")), false);
-  assert.equal(contradicts(span, shot(on(2025, 11, 20), "file")), false);
-  assert.equal(contradicts(span, shot(on(2025, 12, 20), "file")), true);
+  const inferred = inferDates(batch);
+
+  assert.equal(inferred.size, 3, "only the three strays are redated");
+  for (const stray of batch.slice(20)) {
+    assert.equal(inferred.get(stray)?.getMonth(), 10, stray.name);
+  }
+
+  // And the folder that comes out of it.
+  const dated = batch.map((item) => {
+    const when = inferred.get(item);
+    return when ? { ...item, takenAt: when, dateSource: "nearby" } : item;
+  });
+  const [trip] = clusterTrips(dated);
+
+  assert.equal(monthLabel(trip.span), "Noviembre");
+  assert.equal(yearLabel(trip.span), "2025");
+  assert.equal(trip.items.length, 23);
 });
 
-test("no date at all is not a contradiction", () => {
-  const span = { from: on(2025, 11, 18), to: on(2025, 11, 22) };
+test("one camera date anchors the whole batch", () => {
+  const batch = [
+    named("IMG_0001.jpg", on(2025, 11, 18)),
+    named("IMG_0002.jpg", on(2026, 8, 20), "file"),
+    named("IMG_0003.jpg", on(2026, 8, 20), "file"),
+  ];
 
-  assert.equal(contradicts(span, shot(null, "none")), false);
+  const inferred = inferDates(batch);
+
+  // The camera date wins outright, so both file dates are overruled even
+  // though they are the majority.
+  assert.equal(inferred.size, 2);
+  assert.equal(inferred.get(batch[1])?.getTime(), on(2025, 11, 18).getTime());
+});
+
+test("an even split is two trips, not one with stragglers", () => {
+  // Picking a winner here would quietly move half the photos to the wrong
+  // month. Two journeys uploaded together is a real thing to do.
+  const batch = [
+    named("a1.jpg", on(2025, 4, 2), "file"),
+    named("a2.jpg", on(2025, 4, 3), "file"),
+    named("b1.jpg", on(2025, 11, 18), "file"),
+    named("b2.jpg", on(2025, 11, 19), "file"),
+  ];
+
+  assert.equal(inferDates(batch).size, 0);
+  assert.equal(clusterTrips(batch).length, 2);
+});
+
+test("each gap takes the closer of its two neighbours", () => {
+  const batch = [
+    named("IMG_0001.jpg", on(2025, 11, 18)),
+    named("IMG_0002.jpg", null, "none"),
+    named("IMG_0003.jpg", null, "none"),
+    named("IMG_0004.jpg", on(2025, 11, 25)),
+  ];
+
+  const inferred = inferDates(batch);
+
+  // 0002 is one step from 0001 and two from 0004; 0003 is the other way
+  // round. Each takes the one it sits next to.
+  assert.equal(inferred.get(batch[1])?.getTime(), on(2025, 11, 18).getTime());
+  assert.equal(inferred.get(batch[2])?.getTime(), on(2025, 11, 25).getTime());
+});
+
+test("a photo between two equally close neighbours keeps the earlier", () => {
+  // A photo tends to belong with what came before it rather than with what
+  // interrupted it, and something has to break the tie.
+  const batch = [
+    named("IMG_0001.jpg", on(2025, 11, 18)),
+    named("IMG_0002.jpg", null, "none"),
+    named("IMG_0003.jpg", on(2025, 11, 25)),
+  ];
+
+  assert.equal(
+    inferDates(batch).get(batch[1])?.getTime(),
+    on(2025, 11, 18).getTime(),
+  );
+});
+
+test("neighbours are found in camera order, not alphabetical order", () => {
+  // IMG_10 sorts before IMG_2 alphabetically, which would make the wrong
+  // photo its neighbour.
+  const batch = [
+    named("IMG_2.jpg", on(2025, 11, 18)),
+    named("IMG_10.jpg", null, "none"),
+    named("IMG_11.jpg", on(2025, 11, 25)),
+  ];
+
+  // Numerically IMG_10 sits between IMG_2 and IMG_11, equally close to
+  // both, so it keeps the earlier. Sorted as text it would have come
+  // first of the three and borrowed from IMG_11 instead.
+  assert.equal(
+    inferDates(batch).get(batch[1])?.getTime(),
+    on(2025, 11, 18).getTime(),
+  );
+});
+
+test("with no anchor anywhere, no date is invented", () => {
+  const batch = [named("a.jpg", null, "none"), named("b.jpg", null, "none")];
+
+  assert.equal(inferDates(batch).size, 0);
+});
+
+test("a batch that needs no help is left completely alone", () => {
+  const batch = [
+    named("a.jpg", on(2025, 11, 18)),
+    named("b.jpg", on(2025, 11, 19)),
+  ];
+
+  assert.equal(inferDates(batch).size, 0);
+});
+
+test("a borrowed date counts for naming the folder", () => {
+  // Otherwise the photo would be filed under a trip it is not counted as
+  // part of, and the interface would keep calling it undated.
+  assert.equal(isTrustedDate("nearby"), true);
+  assert.deepEqual(
+    undatedFor([named("a.jpg", on(2025, 11, 18), "nearby")]),
+    [],
+  );
 });

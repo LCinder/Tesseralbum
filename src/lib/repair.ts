@@ -1,4 +1,4 @@
-import { shotDate } from "@/lib/gallery";
+import { toShot, withNeighbourDates } from "@/lib/gallery";
 import {
   listEverything,
   update,
@@ -158,7 +158,9 @@ export function planFixes({
       continue;
     }
 
-    const dated = photos.map(shotDate);
+    // The same reading the album does, neighbours and all, so a folder is
+    // named after what a person will actually see inside it.
+    const dated = withNeighbourDates(photos.map(toShot));
 
     // Not one camera date, so there is no yardstick. Reporting this as correct
     // was the bug: the folder agreed with the photos because both had taken

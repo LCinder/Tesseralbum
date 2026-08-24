@@ -341,10 +341,10 @@ test("a trip with no camera date at all is not passed off as correct", () => {
   assert.equal(survey.unverifiable[0].year, "2026");
 });
 
-test("file dates weeks apart are one undatable trip, not two journeys", () => {
-  // Files stored since November plus one recopied last week: with no camera
-  // date anywhere, calling this "two trips" would be reading meaning into
-  // timestamps that carry none.
+test("file dates weeks apart are one trip, named after most of them", () => {
+  // Files stored since November plus one recopied last week, and no camera
+  // date anywhere. Most of the timestamps agree, so they are the trip and
+  // the stray borrows from its neighbour -- no question to answer.
   const survey = planFixes({
     folders: [
       folder("y2025", "2025"),
@@ -361,8 +361,10 @@ test("file dates weeks apart are one undatable trip, not two journeys", () => {
   });
 
   assert.deepEqual(survey.mixed, []);
-  assert.equal(survey.unverifiable.length, 1);
-  assert.equal(survey.unverifiable[0].photoIds.length, 3);
+  assert.deepEqual(survey.unverifiable, []);
+  assert.equal(survey.fixes.length, 1);
+  assert.equal(survey.fixes[0].rename, "Noviembre");
+  assert.equal(survey.fixes[0].photos, 3);
 });
 
 test("one camera date is enough to fix the folder without asking", () => {

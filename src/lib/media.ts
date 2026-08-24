@@ -9,7 +9,7 @@
  * needs a real `File`.
  */
 
-import { isTrustedDate } from "@/lib/trips";
+import { inferDates, isTrustedDate } from "@/lib/trips";
 
 /** Hashing loads the whole file into memory, so very large ones are skipped. */
 export const MAX_HASH_BYTES = 100 * 1024 * 1024;
@@ -17,7 +17,14 @@ export const MAX_HASH_BYTES = 100 * 1024 * 1024;
 export type Kind = "photo" | "video";
 
 /** Where a value came from, so the interface never fakes precision. */
-export type Provenance = "exif" | "name" | "file" | "manual" | "none";
+export type Provenance =
+  | "exif"
+  | "name"
+  | "file"
+  | "manual"
+  /** Taken from the photos either side of it in the batch. */
+  | "nearby"
+  | "none";
 
 export type MediaFile = {
   file: File;
@@ -423,4 +430,35 @@ export function withManualDate(media: MediaFile[], when: Date): MediaFile[] {
       ? item
       : { ...item, takenAt: when, dateSource: "manual" as const },
   );
+}
+
+/**
+ * Fills in the dates a selection could not read, from the photos beside them.
+ *
+ * The one thing that rescues a batch of forwarded photos without asking the
+ * traveller anything: three files re-copied last week sit among twenty that
+ * were left alone, and the twenty say when the trip was.
+ */
+export function withNeighbourDates(media: MediaFile[]): MediaFile[] {
+  const inferred = inferDates(
+    media.map((item) => ({
+      name: item.file.name,
+      takenAt: item.takenAt,
+      dateSource: item.dateSource,
+      item,
+    })),
+  );
+
+  if (inferred.size === 0) return media;
+
+  const byItem = new Map(
+    [...inferred].map(([entry, when]) => [entry.item, when]),
+  );
+
+  return media.map((item) => {
+    const when = byItem.get(item);
+    return when
+      ? { ...item, takenAt: when, dateSource: "nearby" as const }
+      : item;
+  });
 }
