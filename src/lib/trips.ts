@@ -47,7 +47,103 @@ export function spanOf(dates: (Date | null | undefined)[]): DateSpan | null {
 
   if (times.length === 0) return null;
 
-  return { from: new Date(Math.min(...times)), to: new Date(Math.max(...times)) };
+  return {
+    from: new Date(Math.min(...times)),
+    to: new Date(Math.max(...times)),
+  };
+}
+
+/** Anything with a date and some idea of where the date came from. */
+export type Dated = { takenAt: Date | null; dateSource: string };
+
+/**
+ * Which date sources are worth basing a folder name on.
+ *
+ * EXIF is what the camera wrote; a date in the filename is what the camera
+ * wrote into the filename. `file` is `File.lastModified`, which copying,
+ * syncing, exporting or downloading all reset to *now* — so a photo from last
+ * November arrives claiming today, and one such photo is enough to stretch a
+ * trip across nine months and name its folder "Noviembre-Agosto".
+ */
+const TRUSTED_SOURCES = new Set(["exif", "name"]);
+
+function usableDates<T extends Dated>(items: T[]): T[] {
+  const dated = items.filter(
+    (item) =>
+      item.takenAt instanceof Date && Number.isFinite(item.takenAt.getTime()),
+  );
+
+  const trusted = dated.filter((item) => TRUSTED_SOURCES.has(item.dateSource));
+
+  // Trusted dates win outright when any exist. Only when the whole batch has
+  // none does a file date become better than nothing.
+  return trusted.length > 0 ? trusted : dated;
+}
+
+/**
+ * The items no trip was drawn from: no date at all, or one too weak to use.
+ *
+ * They are still uploaded — they ride along with the largest cluster — but the
+ * interface says so out loud rather than letting a folder be named after a
+ * timestamp that copying a file invented. Weak dates are only listed here when
+ * something better exists; a batch with nothing but file dates uses them, and
+ * calling them ignored would be untrue.
+ */
+export function undatedFor<T extends Dated>(items: T[]): T[] {
+  const usable = new Set(usableDates(items));
+  return items.filter((item) => !usable.has(item));
+}
+
+/**
+ * Splits a selection into the trips it actually contains.
+ *
+ * Picking a year of photos at once used to produce a single folder spanning the
+ * lot — "Noviembre-Abril" for two separate journeys. Photos cluster in time on
+ * their own, so the gap between them is the seam: the same threshold that
+ * decides whether a later upload joins an existing trip.
+ *
+ * Items whose date cannot be trusted ride along with the largest cluster, which
+ * is the best guess available and one the interface states out loud rather than
+ * making quietly.
+ */
+export function clusterTrips<T extends Dated>(
+  items: T[],
+): { span: DateSpan; items: T[] }[] {
+  const usable = usableDates(items);
+  if (usable.length === 0) return [];
+
+  const sorted = [...usable].sort(
+    (a, b) => (a.takenAt as Date).getTime() - (b.takenAt as Date).getTime(),
+  );
+
+  const clusters: T[][] = [[sorted[0]]];
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const previous = (sorted[i - 1].takenAt as Date).getTime();
+    const current = (sorted[i].takenAt as Date).getTime();
+
+    if (current - previous > SAME_TRIP_GAP_DAYS * DAY)
+      clusters.push([sorted[i]]);
+    else clusters[clusters.length - 1].push(sorted[i]);
+  }
+
+  const grouped = clusters.map((members) => ({
+    span: spanOf(members.map((member) => member.takenAt)) as DateSpan,
+    items: members,
+  }));
+
+  // Everything left over: no date at all, or a date too weak to cluster on.
+  const placed = new Set(usable);
+  const leftovers = items.filter((item) => !placed.has(item));
+
+  if (leftovers.length > 0) {
+    const biggest = grouped.reduce((best, candidate) =>
+      candidate.items.length > best.items.length ? candidate : best,
+    );
+    biggest.items.push(...leftovers);
+  }
+
+  return grouped;
 }
 
 /**
@@ -62,7 +158,8 @@ export function monthLabel({ from, to }: DateSpan): string {
   const end = monthName(to.getMonth());
 
   const sameMonth =
-    from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+    from.getMonth() === to.getMonth() &&
+    from.getFullYear() === to.getFullYear();
 
   return sameMonth ? start : `${start}-${end}`;
 }

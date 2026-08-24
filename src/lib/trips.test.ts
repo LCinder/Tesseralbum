@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   SAME_TRIP_GAP_DAYS,
   belongsToSameTrip,
+  clusterTrips,
   disambiguate,
   mergeSpans,
   monthLabel,
@@ -11,6 +12,7 @@ import {
   spanOf,
   spanToProperties,
   tripPath,
+  undatedFor,
   yearLabel,
 } from "./trips";
 
@@ -198,4 +200,149 @@ test("a reversed span is rejected rather than silently swapped", () => {
   };
 
   assert.equal(spanFromProperties(backwards), null);
+});
+
+/** A photo with a date and a claim about where the date came from. */
+const shot = (at: Date | null, dateSource = "exif") => ({
+  takenAt: at,
+  dateSource,
+});
+
+test("a file date does not stretch a trip when real dates exist", () => {
+  // The reported bug: photos from November whose EXIF was stripped fall back
+  // to File.lastModified, which copying resets to today. One of those turned
+  // a November trip into "Noviembre-Agosto".
+  const batch = [
+    shot(on(2025, 11, 18)),
+    shot(on(2025, 11, 22)),
+    shot(on(2026, 8, 20), "file"),
+  ];
+
+  const [trip] = clusterTrips(batch);
+
+  assert.equal(monthLabel(trip.span), "Noviembre");
+  assert.equal(yearLabel(trip.span), "2025");
+  assert.equal(trip.items.length, 3, "the undated photo still comes along");
+});
+
+test("a filename date is trusted like EXIF", () => {
+  // IMG_20251118.jpg is the camera writing the date, just somewhere else.
+  const batch = [shot(on(2025, 11, 18), "name"), shot(on(2026, 8, 20), "file")];
+
+  assert.equal(monthLabel(clusterTrips(batch)[0].span), "Noviembre");
+});
+
+test("with nothing better, file dates are used rather than refusing", () => {
+  const batch = [
+    shot(on(2025, 11, 18), "file"),
+    shot(on(2025, 11, 20), "file"),
+  ];
+
+  const [trip] = clusterTrips(batch);
+  assert.equal(monthLabel(trip.span), "Noviembre");
+});
+
+test("two journeys in one selection become two trips", () => {
+  // The other half of the bug: picking a year of photos at once produced one
+  // folder spanning the lot.
+  const batch = [
+    shot(on(2025, 11, 18)),
+    shot(on(2025, 11, 26)),
+    shot(on(2026, 4, 2)),
+    shot(on(2026, 4, 9)),
+  ];
+
+  const trips = clusterTrips(batch);
+
+  assert.equal(trips.length, 2);
+  assert.equal(monthLabel(trips[0].span), "Noviembre");
+  assert.equal(monthLabel(trips[1].span), "Abril");
+  assert.deepEqual(
+    trips.map((t) => t.items.length),
+    [2, 2],
+  );
+});
+
+test("one journey stays one trip, however many photos", () => {
+  const batch = Array.from({ length: 40 }, (_, i) =>
+    shot(on(2025, 9, 29 + Math.floor(i / 5))),
+  );
+
+  assert.equal(clusterTrips(batch).length, 1);
+});
+
+test("the seam is the same threshold that joins a later upload", () => {
+  const together = [
+    shot(on(2025, 1, 1)),
+    shot(on(2025, 1, 1 + SAME_TRIP_GAP_DAYS)),
+  ];
+  const apart = [
+    shot(on(2025, 1, 1)),
+    shot(on(2025, 1, 2 + SAME_TRIP_GAP_DAYS)),
+  ];
+
+  assert.equal(clusterTrips(together).length, 1);
+  assert.equal(clusterTrips(apart).length, 2);
+});
+
+test("trips come back in the order they happened", () => {
+  const batch = [
+    shot(on(2026, 4, 2)),
+    shot(on(2025, 11, 18)),
+    shot(on(2026, 8, 1)),
+  ];
+
+  assert.deepEqual(
+    clusterTrips(batch).map(
+      (t) => yearLabel(t.span) + " " + monthLabel(t.span),
+    ),
+    ["2025 Noviembre", "2026 Abril", "2026 Agosto"],
+  );
+});
+
+test("undated photos join the biggest trip, not the first", () => {
+  // The best guess available: the trip you are plainly uploading.
+  const batch = [
+    shot(on(2025, 11, 18)),
+    shot(on(2026, 4, 2)),
+    shot(on(2026, 4, 3)),
+    shot(on(2026, 4, 4)),
+    shot(null),
+    shot(null),
+  ];
+
+  const trips = clusterTrips(batch);
+  const april = trips.find((t) => monthLabel(t.span) === "Abril");
+
+  assert.equal(april?.items.length, 5, "three dated plus the two undated");
+});
+
+test("a selection with no usable date at all yields no trip", () => {
+  assert.deepEqual(clusterTrips([]), []);
+  assert.deepEqual(clusterTrips([shot(null), shot(null)]), []);
+});
+
+test("the files no trip was drawn from are the ones reported", () => {
+  const weak = shot(on(2026, 8, 20), "file");
+  const none = shot(null, "none");
+  const batch = [shot(on(2025, 11, 18)), weak, none];
+
+  assert.deepEqual(undatedFor(batch), [weak, none]);
+});
+
+test("a batch with nothing better does not call its own dates ignored", () => {
+  // These file dates decide the folder, so listing them as unused would be a
+  // lie — and the warning would fire on every batch of stripped photos.
+  const batch = [shot(on(2026, 8, 20), "file"), shot(on(2026, 8, 21), "file")];
+
+  assert.deepEqual(undatedFor(batch), []);
+  assert.equal(clusterTrips(batch).length, 1);
+});
+
+test("nothing to report when every photo carries a camera date", () => {
+  assert.deepEqual(
+    undatedFor([shot(on(2025, 11, 18)), shot(on(2025, 11, 19))]),
+    [],
+  );
+  assert.deepEqual(undatedFor([]), []);
 });

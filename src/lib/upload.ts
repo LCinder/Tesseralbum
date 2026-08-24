@@ -15,11 +15,11 @@ import type { MediaFile } from "@/lib/media";
 import { forget } from "@/lib/memo";
 import {
   belongsToSameTrip,
+  clusterTrips,
   disambiguate,
   mergeSpans,
   monthLabel,
   spanFromProperties,
-  spanOf,
   spanToProperties,
   yearLabel,
   type DateSpan,
@@ -59,11 +59,9 @@ export async function resolveTripFolder(
 ): Promise<TripFolder> {
   // Starting from the known root: the catalogue already resolved it when the
   // session opened, and looking it up again is a wasted request every batch.
-  const yearId = await ensurePath(
-    getToken,
-    [place.country, yearLabel(span)],
-    { from: rootId },
-  );
+  const yearId = await ensurePath(getToken, [place.country, yearLabel(span)], {
+    from: rootId,
+  });
 
   const siblings = await listChildren(getToken, yearId, { foldersOnly: true });
 
@@ -217,10 +215,13 @@ async function makeAndStoreThumbnail(
 /**
  * Uploads a batch, reporting after every step.
  *
- * One file at a time. Nothing forces this any more — the folder is resolved
- * once before the loop, so there is no rename left to race on — but running
- * several at once buys wall-clock time, not fewer requests, and costs a much
- * fiddlier progress and cancel story.
+ * A selection is not necessarily one trip. It is split by the gaps between its
+ * photos, and each cluster gets its own folder — picking a year of photos at
+ * once used to file them all together under a name like "Noviembre-Abril".
+ *
+ * One file at a time within a trip. Nothing forces that any more, but running
+ * several at once buys wall-clock time rather than fewer requests, and costs a
+ * much fiddlier progress and cancel story.
  */
 export async function uploadBatch(
   getToken: TokenSource,
@@ -231,7 +232,6 @@ export async function uploadBatch(
     rootId,
     onProgress,
     signal,
-    span: filedUnder,
   }: {
     media: MediaFile[];
     place: Place;
@@ -239,19 +239,14 @@ export async function uploadBatch(
     rootId: string;
     onProgress: (progress: Progress) => void;
     signal?: AbortSignal;
-    /**
-     * The span to file under, when it is not the one this media implies.
-     *
-     * Retrying the three photos that failed out of fifty must land them in
-     * the same trip as the forty-seven that worked, so the caller passes the
-     * whole batch's span rather than letting the survivors redraw the trip
-     * around themselves.
-     */
-    span?: DateSpan;
   },
 ): Promise<void> {
-  const span = filedUnder ?? spanOf(media.map((item) => item.takenAt));
-  if (!span) {
+  // Split into the trips this selection actually contains. One selection can
+  // hold two journeys, and filing them together produced a folder called
+  // "Noviembre-Abril".
+  const groups = clusterTrips(media);
+
+  if (groups.length === 0) {
     throw new Error(
       "Ninguna de las fotos tiene fecha, así que no se puede decidir la carpeta del viaje.",
     );
@@ -274,9 +269,6 @@ export async function uploadBatch(
 
   report(null);
 
-  const folder = await resolveTripFolder(getToken, place, span, rootId);
-  report(folder);
-
   // Resolved once for the batch. If it cannot be created the upload still goes
   // ahead — thumbnails are an optimisation, not a requirement.
   let thumbsId: string | null = null;
@@ -291,7 +283,7 @@ export async function uploadBatch(
   for (const item of media) {
     if (item.sha256) states.set(itemKey(item), { status: "hashing" });
   }
-  report(folder);
+  report(null);
 
   const known = await findByHashes(
     getToken,
@@ -299,56 +291,67 @@ export async function uploadBatch(
     { signal },
   );
 
-  for (const item of media) {
+  for (const group of groups) {
     if (signal?.aborted) return;
 
-    const key = itemKey(item);
+    // One folder per trip in the selection, resolved as its turn comes rather
+    // than all up front: a cancelled upload should not have created folders for
+    // trips it never got to.
+    const folder = await resolveTripFolder(getToken, place, group.span, rootId);
+    report(folder);
 
-    try {
-      const alreadyThere = item.sha256 ? known.get(item.sha256) : undefined;
-      if (alreadyThere) {
-        states.set(key, { status: "duplicate", existingId: alreadyThere });
-        report(folder);
-        continue;
-      }
+    for (const item of group.items) {
+      if (signal?.aborted) return;
 
-      states.set(key, { status: "uploading", sent: 0 });
-      report(folder);
+      const key = itemKey(item);
 
-      // Before the photo, so its id can go in at creation rather than costing
-      // a second request to patch on afterwards.
-      const thumbId = await makeAndStoreThumbnail(getToken, item, thumbsId);
-
-      const session = await startResumableUpload(
-        getToken,
-        {
-          name: item.file.name,
-          parentId: folder.id,
-          appProperties: propertiesFor(item, place, slug, thumbId),
-        },
-        item.file,
-      );
-
-      const uploaded = await uploadFileChunks(session, item.file, {
-        signal,
-        onProgress: (sent) => {
-          states.set(key, { status: "uploading", sent });
+      try {
+        const alreadyThere = item.sha256 ? known.get(item.sha256) : undefined;
+        if (alreadyThere) {
+          states.set(key, { status: "duplicate", existingId: alreadyThere });
           report(folder);
-        },
-      });
+          continue;
+        }
 
-      states.set(key, { status: "done", fileId: uploaded.id });
-      report(folder);
-    } catch (cause) {
-      if (cause instanceof DOMException && cause.name === "AbortError") return;
+        states.set(key, { status: "uploading", sent: 0 });
+        report(folder);
 
-      states.set(key, {
-        status: "failed",
-        reason: cause instanceof Error ? cause.message : "Error desconocido.",
-      });
-      report(folder);
-      // Carrying on is deliberate: one corrupt file should not strand the
-      // rest of the trip.
+        // Before the photo, so its id can go in at creation rather than costing
+        // a second request to patch on afterwards.
+        const thumbId = await makeAndStoreThumbnail(getToken, item, thumbsId);
+
+        const session = await startResumableUpload(
+          getToken,
+          {
+            name: item.file.name,
+            parentId: folder.id,
+            appProperties: propertiesFor(item, place, slug, thumbId),
+          },
+          item.file,
+        );
+
+        const uploaded = await uploadFileChunks(session, item.file, {
+          signal,
+          onProgress: (sent) => {
+            states.set(key, { status: "uploading", sent });
+            report(folder);
+          },
+        });
+
+        states.set(key, { status: "done", fileId: uploaded.id });
+        report(folder);
+      } catch (cause) {
+        if (cause instanceof DOMException && cause.name === "AbortError")
+          return;
+
+        states.set(key, {
+          status: "failed",
+          reason: cause instanceof Error ? cause.message : "Error desconocido.",
+        });
+        report(folder);
+        // Carrying on is deliberate: one corrupt file should not strand the
+        // rest of the trip.
+      }
     }
   }
 }

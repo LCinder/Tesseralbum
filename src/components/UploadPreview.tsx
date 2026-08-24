@@ -14,13 +14,7 @@ import {
 } from "@/lib/limits";
 import { formatBytes, readSelection, type MediaFile } from "@/lib/media";
 import { readQuota } from "@/lib/google/drive";
-import {
-  monthLabel,
-  spanOf,
-  tripPath,
-  yearLabel,
-  type DateSpan,
-} from "@/lib/trips";
+import { clusterTrips, tripPath, undatedFor } from "@/lib/trips";
 import {
   itemKey,
   uploadBatch,
@@ -116,11 +110,13 @@ export function UploadPreview({
   /**
    * Uploads some of the selection, keeping what earlier attempts established.
    *
-   * `filedUnder` is the whole selection's span rather than this run's. It only
-   * matters on a retry: three photos out of fifty belong to the trip the fifty
-   * drew, not to the narrower one the three would draw on their own.
+   * A retry re-clusters rather than being handed the original span: three
+   * photos out of fifty draw a narrower trip on their own, but the folder the
+   * other forty-seven made is within a fortnight of them, so it is found and
+   * joined. That also keeps a two-trip selection from collapsing into a single
+   * folder on the second attempt.
    */
-  async function run(items: MediaFile[], filedUnder?: DateSpan) {
+  async function run(items: MediaFile[]) {
     if (items.length === 0) return;
 
     // Unreachable in practice — the uploader only renders once connected — but
@@ -145,7 +141,6 @@ export function UploadPreview({
         place,
         slug,
         rootId,
-        span: filedUnder,
         signal: controller.signal,
         onProgress: (next) => {
           const merged: Progress = {
@@ -174,7 +169,14 @@ export function UploadPreview({
     }
   }
 
-  const span = spanOf(media?.map((item) => item.takenAt) ?? []);
+  // The same split the upload will perform, shown before it happens: the
+  // folder a batch lands in is derived from its own dates, and this is the
+  // cheap moment to catch that being wrong.
+  const trips = clusterTrips(media ?? []);
+
+  // Whatever the split could not place. Counted rather than listed: the table
+  // below already names every file.
+  const undated = undatedFor(media ?? []).length;
   const states = progress?.states;
 
   const counts = tally(states);
@@ -220,26 +222,47 @@ export function UploadPreview({
         <>
           <div className="mb-8 border-l-[3px] border-teal bg-teal-bg px-4 py-4">
             <p className="t-label mb-2 text-teal">
-              {progress?.folder ? "Subiendo a" : "Irán a esta carpeta"}
-            </p>
-            <p className="mb-3 break-all font-mono text-sm">
-              {span
-                ? [ROOT_FOLDER, ...tripPath(place.country, span)].join("/") + "/"
-                : `${ROOT_FOLDER}/${place.country}/ — sin fechas, no se puede decidir`}
+              {progress?.folder
+                ? "Subiendo a"
+                : trips.length === 1
+                  ? "Irán a esta carpeta"
+                  : `Se han detectado ${trips.length} viajes`}
             </p>
 
-            {span && (
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[0.9rem]">
-                <dt className="text-ink-soft">Viaje</dt>
-                <dd className="tabular-nums">
-                  {span.from.toLocaleDateString("es")} →{" "}
-                  {span.to.toLocaleDateString("es")}
-                </dd>
-                <dt className="text-ink-soft">Año</dt>
-                <dd className="tabular-nums">{yearLabel(span)}</dd>
-                <dt className="text-ink-soft">Meses</dt>
-                <dd>{monthLabel(span)}</dd>
-              </dl>
+            {trips.length === 0 ? (
+              <p className="break-all font-mono text-sm">
+                {ROOT_FOLDER}/{place.country}/ — sin fechas, no se puede decidir
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {trips.map((trip) => (
+                  <li key={trip.span.from.getTime()}>
+                    <p className="break-all font-mono text-sm">
+                      {[
+                        ROOT_FOLDER,
+                        ...tripPath(place.country, trip.span),
+                      ].join("/")}
+                      /
+                    </p>
+                    <p className="mt-0.5 text-[0.9rem] text-ink-soft tabular-nums">
+                      {trip.span.from.toLocaleDateString("es")} →{" "}
+                      {trip.span.to.toLocaleDateString("es")} ·{" "}
+                      {trip.items.length}{" "}
+                      {trip.items.length === 1 ? "fichero" : "ficheros"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {undated > 0 && trips.length > 0 && (
+              <p className="mt-3 text-[0.9rem]">
+                {undated}{" "}
+                {undated === 1 ? "fichero llegó" : "ficheros llegaron"} sin
+                fecha de cámara. No cuentan para decidir las fechas del viaje —
+                la del sistema se pone al día sola al copiar un fichero — y van
+                con el viaje más grande.
+              </p>
             )}
 
             {progress?.folder?.renamedFrom && (
@@ -274,7 +297,9 @@ export function UploadPreview({
               <button
                 type="button"
                 onClick={() => void run(media)}
-                disabled={!span || uploading || verdict.kind === "full"}
+                disabled={
+                  trips.length === 0 || uploading || verdict.kind === "full"
+                }
                 className="t-display cursor-pointer rounded-sm bg-accent px-5 py-3 font-semibold text-accent-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Subir {media.length}{" "}
@@ -295,7 +320,7 @@ export function UploadPreview({
             {unfinished.length > 0 && (
               <button
                 type="button"
-                onClick={() => void run(unfinished, span ?? undefined)}
+                onClick={() => void run(unfinished)}
                 className="t-display cursor-pointer rounded-sm bg-accent px-5 py-3 font-semibold text-accent-ink transition-opacity hover:opacity-90"
               >
                 Reintentar {unfinished.length}{" "}
@@ -338,9 +363,7 @@ export function UploadPreview({
                 <span className="text-accent">{counts.failed} fallaron. </span>
               )}
               {uploading && counts.left > 0 && (
-                <span className="text-ink-soft">
-                  Quedan {counts.left}.
-                </span>
+                <span className="text-ink-soft">Quedan {counts.left}.</span>
               )}
             </p>
           )}
