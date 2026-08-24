@@ -276,9 +276,10 @@ Comprobado a mano contra Google: consentimiento, creación de carpetas, escritur
 del catálogo, subida de fotos, lectura de fechas EXIF, la inferencia de fechas
 por vecindad y el renombrado de carpetas desde `/admin`.
 
-Comprobado con un chip de verdad: grabar la URL de un lugar en una pegatina NFC
-y abrir el álbum acercando el móvil. Era la premisa del proyecto y la última
-pieza que quedaba sin probar de punta a punta.
+Comprobado con un chip de verdad, de punta a punta: grabar la pegatina **desde
+la propia app** con el botón `Grabar chip` (Chrome en Android), y abrir el álbum
+acercándole el móvil. Era la premisa del proyecto y lo último que quedaba sin
+probar fuera de los tests.
 
 ## Notas
 
