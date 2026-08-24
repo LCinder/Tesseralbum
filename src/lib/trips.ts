@@ -65,7 +65,12 @@ export type Dated = { takenAt: Date | null; dateSource: string };
  * November arrives claiming today, and one such photo is enough to stretch a
  * trip across nine months and name its folder "Noviembre-Agosto".
  */
-const TRUSTED_SOURCES = new Set(["exif", "name"]);
+const TRUSTED_SOURCES = new Set(["exif", "name", "manual"]);
+
+/** Whether a date from this source is worth basing a folder name on. */
+export function isTrustedDate(dateSource: string): boolean {
+  return TRUSTED_SOURCES.has(dateSource);
+}
 
 function usableDates<T extends Dated>(items: T[]): T[] {
   const dated = items.filter(

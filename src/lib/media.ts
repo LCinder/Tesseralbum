@@ -9,13 +9,15 @@
  * needs a real `File`.
  */
 
+import { isTrustedDate } from "@/lib/trips";
+
 /** Hashing loads the whole file into memory, so very large ones are skipped. */
 export const MAX_HASH_BYTES = 100 * 1024 * 1024;
 
 export type Kind = "photo" | "video";
 
 /** Where a value came from, so the interface never fakes precision. */
-export type Provenance = "exif" | "name" | "file" | "none";
+export type Provenance = "exif" | "name" | "file" | "manual" | "none";
 
 export type MediaFile = {
   file: File;
@@ -386,4 +388,39 @@ export async function readSelection(files: File[]): Promise<{
   }
 
   return { media, rejected };
+}
+
+/** A yyyy-mm-dd from a date input, at midday so no timezone can shift the day. */
+export function parseDay(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const [, year, month, day] = match;
+  const at = new Date(Number(year), Number(month) - 1, Number(day), 12, 0, 0);
+
+  // Rejects the 31st of February, which the constructor would roll forward.
+  if (at.getMonth() !== Number(month) - 1 || at.getDate() !== Number(day)) {
+    return null;
+  }
+
+  return at;
+}
+
+/**
+ * Applies a date the traveller typed in, to the files that had nothing better.
+ *
+ * A photo stripped of its EXIF whose name holds no date cannot be dated by any
+ * amount of cleverness — the information is gone. Someone who was there still
+ * knows, and their answer beats a file timestamp, so it counts as trusted and
+ * decides the folder like a camera date would.
+ *
+ * Never overrides a camera date: the traveller is being asked what the file
+ * could not say, not to correct what it did.
+ */
+export function withManualDate(media: MediaFile[], when: Date): MediaFile[] {
+  return media.map((item) =>
+    isTrustedDate(item.dateSource)
+      ? item
+      : { ...item, takenAt: when, dateSource: "manual" as const },
+  );
 }

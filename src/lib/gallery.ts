@@ -66,8 +66,10 @@ function dateOf(
   const usable = stored && Number.isFinite(stored.getTime()) ? stored : null;
   const source = (properties.dateSource ?? "none") as Provenance;
 
-  if (source === "exif" && usable)
+  // The camera's own answer, or the traveller's: neither is second-guessed.
+  if ((source === "exif" || source === "manual") && usable) {
     return { takenAt: usable, dateSource: source };
+  }
 
   const named = dateFromName(file.name);
   if (named) return { takenAt: named, dateSource: "name" };

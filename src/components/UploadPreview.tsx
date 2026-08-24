@@ -12,7 +12,13 @@ import {
   type Quota,
   type Rejection,
 } from "@/lib/limits";
-import { formatBytes, readSelection, type MediaFile } from "@/lib/media";
+import {
+  formatBytes,
+  parseDay,
+  readSelection,
+  withManualDate,
+  type MediaFile,
+} from "@/lib/media";
 import { readQuota } from "@/lib/google/drive";
 import { clusterTrips, tripPath, undatedFor } from "@/lib/trips";
 import {
@@ -56,6 +62,8 @@ export function UploadPreview({
   const [progress, setProgress] = useState<Progress | null>(null);
   const [uploading, setUploading] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // A yyyy-mm-dd typed in for the files that carry no date of their own.
+  const [typed, setTyped] = useState("");
 
   // Read once on mount. A failure is not worth surfacing: the quota only
   // powers a warning, and losing it must not block an upload.
@@ -85,6 +93,7 @@ export function UploadPreview({
     setRejected([]);
     setProgress(null);
     setProblem(null);
+    setTyped("");
 
     const result = await readSelection(files);
     const { accepted, rejected: overLimit } = applyLimits(result.media);
@@ -104,6 +113,7 @@ export function UploadPreview({
     setProgress(null);
     setProblem(null);
     setUploading(false);
+    setTyped("");
     if (input.current) input.current.value = "";
   }
 
@@ -172,11 +182,20 @@ export function UploadPreview({
   // The same split the upload will perform, shown before it happens: the
   // folder a batch lands in is derived from its own dates, and this is the
   // cheap moment to catch that being wrong.
-  const trips = clusterTrips(media ?? []);
+  // The selection as it will actually be filed: whatever each file said
+  // about itself, plus a typed-in date for the ones that said nothing. The
+  // preview, the folder names and the upload all read this, so none of them
+  // can disagree with what is on screen.
+  const typedDay = parseDay(typed);
+  const items = typedDay
+    ? withManualDate(media ?? [], typedDay)
+    : (media ?? []);
+
+  const trips = clusterTrips(items);
 
   // Whatever the split could not place. Counted rather than listed: the table
   // below already names every file.
-  const undated = undatedFor(media ?? []).length;
+  const undated = undatedFor(items).length;
   const states = progress?.states;
 
   const counts = tally(states);
@@ -185,9 +204,9 @@ export function UploadPreview({
   // Anything the run did not put in Drive: the outright failures, and whatever
   // a cancelled or broken batch never reached. Files already there are left
   // out, so a retry is never a second upload of the same bytes.
-  const unfinished = finished ? (media ?? []).filter(isUnfinished(states)) : [];
+  const unfinished = finished ? items.filter(isUnfinished(states)) : [];
 
-  const batchBytes = totalBytes(media ?? []);
+  const batchBytes = totalBytes(items);
   const verdict = quotaVerdict(quota, batchBytes);
 
   return (
@@ -255,14 +274,30 @@ export function UploadPreview({
               </ul>
             )}
 
-            {undated > 0 && trips.length > 0 && (
-              <p className="mt-3 text-[0.9rem]">
-                {undated}{" "}
-                {undated === 1 ? "fichero llegó" : "ficheros llegaron"} sin
-                fecha de cámara. No cuentan para decidir las fechas del viaje —
-                la del sistema se pone al día sola al copiar un fichero — y van
-                con el viaje más grande.
-              </p>
+            {undated > 0 && (
+              <div className="mt-4 border-t border-teal/30 pt-3">
+                <p className="text-[0.9rem]">
+                  {undated} {undated === 1 ? "fichero" : "ficheros"} sin fecha
+                  de cámara.{" "}
+                  {trips.length > 0
+                    ? "No cuentan para decidir las fechas del viaje — la del sistema se pone al día sola al copiar un fichero — y van con el viaje más grande."
+                    : "Ninguno trae fecha, así que no hay con qué decidir la carpeta."}
+                </p>
+                <label className="mt-2 flex flex-wrap items-baseline gap-2 text-[0.9rem]">
+                  <span>Si sabes de cuándo son:</span>
+                  <input
+                    type="date"
+                    value={typed}
+                    onChange={(event) => setTyped(event.target.value)}
+                    disabled={uploading || progress !== null}
+                    className="border border-rule bg-surface px-2 py-1 font-mono text-sm tabular-nums disabled:opacity-60"
+                  />
+                </label>
+                <p className="mt-1 text-[0.85rem] text-ink-soft">
+                  Solo se aplica a esos ficheros. Las fotos que traen fecha de
+                  cámara no se tocan.
+                </p>
+              </div>
             )}
 
             {progress?.folder?.renamedFrom && (
@@ -296,7 +331,7 @@ export function UploadPreview({
             {!progress && (
               <button
                 type="button"
-                onClick={() => void run(media)}
+                onClick={() => void run(items)}
                 disabled={
                   trips.length === 0 || uploading || verdict.kind === "full"
                 }
@@ -388,7 +423,7 @@ export function UploadPreview({
                 </tr>
               </thead>
               <tbody>
-                {media.map((item) => (
+                {items.map((item) => (
                   <Row
                     key={itemKey(item)}
                     item={item}

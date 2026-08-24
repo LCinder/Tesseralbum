@@ -6,8 +6,11 @@ import {
   formatBytes,
   pickCoords,
   pickDate,
+  parseDay,
   undecodableWarning,
+  withManualDate,
 } from "./media";
+import { clusterTrips, monthLabel, undatedFor, yearLabel } from "./trips";
 
 test("MIME type decides photo from video", () => {
   assert.equal(classify("image/jpeg", "IMG_0001.JPG"), "photo");
@@ -198,4 +201,74 @@ test("Pixel's milliseconds do not cost the photo its time", () => {
   assert.equal(at?.getHours(), 12);
   assert.equal(at?.getMinutes(), 3);
   assert.equal(at?.getSeconds(), 11);
+});
+
+test("a typed day is read at midday, so no timezone moves it", () => {
+  const at = parseDay("2025-11-18");
+
+  assert.equal(at?.getFullYear(), 2025);
+  assert.equal(at?.getMonth(), 10);
+  assert.equal(at?.getDate(), 18);
+  assert.equal(at?.getHours(), 12);
+});
+
+test("a half-typed or impossible day is not a day", () => {
+  for (const value of [
+    "",
+    "2025",
+    "2025-11",
+    "18/11/2025",
+    "2025-02-31",
+    "2025-13-01",
+  ]) {
+    assert.equal(parseDay(value), null, value);
+  }
+});
+
+test("a typed date fills in only the files that had nothing to say", () => {
+  const when = parseDay("2025-11-18") as Date;
+  const shot = new Date(2025, 10, 22, 9, 0);
+
+  const media = [
+    { dateSource: "exif", takenAt: shot },
+    { dateSource: "name", takenAt: shot },
+    { dateSource: "file", takenAt: new Date(2026, 7, 20) },
+    { dateSource: "none", takenAt: null },
+  ] as unknown as Parameters<typeof withManualDate>[0];
+
+  const filled = withManualDate(media, when);
+
+  assert.equal(filled[0].dateSource, "exif", "the camera is not overruled");
+  assert.equal(filled[0].takenAt?.getTime(), shot.getTime());
+  assert.equal(filled[1].dateSource, "name", "nor the name");
+
+  assert.equal(filled[2].dateSource, "manual");
+  assert.equal(filled[2].takenAt?.getTime(), when.getTime());
+  assert.equal(filled[3].dateSource, "manual");
+  assert.equal(filled[3].takenAt?.getTime(), when.getTime());
+});
+
+test("a typed date decides the folder, which a file date could not", () => {
+  // The whole point: photos with no metadata at all used to be filed under
+  // the day they were copied.
+  const when = parseDay("2025-11-18") as Date;
+  const media = [
+    { dateSource: "file", takenAt: new Date(2026, 7, 20) },
+    { dateSource: "none", takenAt: null },
+  ] as unknown as Parameters<typeof withManualDate>[0];
+
+  const [trip] = clusterTrips(withManualDate(media, when));
+
+  assert.equal(monthLabel(trip.span), "Noviembre");
+  assert.equal(yearLabel(trip.span), "2025");
+  assert.equal(trip.items.length, 2);
+});
+
+test("nothing is left unplaced once a date has been typed", () => {
+  const when = parseDay("2025-11-18") as Date;
+  const media = [
+    { dateSource: "file", takenAt: new Date(2026, 7, 20) },
+  ] as unknown as Parameters<typeof withManualDate>[0];
+
+  assert.deepEqual(undatedFor(withManualDate(media, when)), []);
 });
