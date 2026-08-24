@@ -228,11 +228,21 @@ docs/
 
 ## Estado de verificación
 
-Comprobado automáticamente en cada cambio: **150 tests**, typecheck, lint y
+Comprobado automáticamente en cada cambio: **222 tests**, typecheck, lint y
 build.
 
-Comprobado a mano contra Google: consentimiento, creación de carpetas,
-escritura del catálogo, subida de fotos y lectura de fechas EXIF.
+Comprobado a mano contra Google: consentimiento, creación de carpetas, escritura
+del catálogo, subida de fotos y lectura de fechas EXIF.
+
+Sin comprobar a mano todavía:
+
+- **Grabar un chip NFC de verdad.** Es la premisa del proyecto y la única parte
+  que nunca se ha probado de punta a punta.
+- **El botón de recalcular fechas escribiendo en Drive.** La lógica está
+  cubierta por tests, pero ninguna ejecución real ha llegado a renombrar una
+  carpeta.
+- **La inferencia de fechas por vecindad sobre un Drive real.** Igual: probada,
+  pero no vista funcionando contra fotos de verdad.
 
 ## Notas
 
