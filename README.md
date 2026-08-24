@@ -90,6 +90,25 @@ Todo esto se aplica en tres sitios con la misma función, así que no pueden
 discrepar: al subir (y se guarda en la foto), al leer el álbum (sin escribir nada,
 lo que repara álbumes de antes) y al renombrar carpetas desde `/admin`.
 
+### Guardada o recalculada
+
+Las dos, a propósito:
+
+- **Al subir** se escribe en las `appProperties` de la foto (`takenAt` y
+  `dateSource`, que dice de dónde salió).
+- **Al leer un álbum** se recalcula en el navegador sobre lo que el listado ya
+  trajo, sin ninguna llamada extra.
+- **El nombre del fichero no se toca nunca.** Solo el de la carpeta, y solo
+  desde el botón de `/admin`.
+
+Recalcular al leer es lo que repara hacia atrás: un álbum subido antes de que
+existiera nada de esto se ve bien sin tocar Drive ni gastar cuota. El precio es
+que la foto sigue guardando la fecha mala, así que **cualquier pantalla nueva
+tiene que leer por `listTrips`**, que aplica el recálculo, y no las
+`appProperties` en crudo. Hoy pasan por ahí la galería, el visor y el propio
+recálculo de carpetas; el pasaporte y el "hace un año" leen el rango de la
+carpeta, no la foto.
+
 ## Recalcular fechas
 
 Cada carpeta de viaje lleva en sus propias `appProperties` el rango que cubre, y
@@ -232,17 +251,12 @@ Comprobado automáticamente en cada cambio: **222 tests**, typecheck, lint y
 build.
 
 Comprobado a mano contra Google: consentimiento, creación de carpetas, escritura
-del catálogo, subida de fotos y lectura de fechas EXIF.
+del catálogo, subida de fotos, lectura de fechas EXIF, la inferencia de fechas
+por vecindad y el renombrado de carpetas desde `/admin`.
 
-Sin comprobar a mano todavía:
-
-- **Grabar un chip NFC de verdad.** Es la premisa del proyecto y la única parte
-  que nunca se ha probado de punta a punta.
-- **El botón de recalcular fechas escribiendo en Drive.** La lógica está
-  cubierta por tests, pero ninguna ejecución real ha llegado a renombrar una
-  carpeta.
-- **La inferencia de fechas por vecindad sobre un Drive real.** Igual: probada,
-  pero no vista funcionando contra fotos de verdad.
+Comprobado con un chip de verdad: grabar la URL de un lugar en una pegatina NFC
+y abrir el álbum acercando el móvil. Era la premisa del proyecto y la última
+pieza que quedaba sin probar de punta a punta.
 
 ## Notas
 
