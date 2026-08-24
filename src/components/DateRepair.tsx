@@ -9,6 +9,7 @@ import {
   planTripDate,
   setTripDate,
   surveyTrips,
+  type Checked,
   type Survey,
   type Unverifiable,
 } from "@/lib/repair";
@@ -262,6 +263,8 @@ function Plan({
         </div>
       )}
 
+      <Detail checked={survey.checked} />
+
       {undatable > 0 && (
         <p className="mt-4 text-[0.9rem]">
           {undatable === 1
@@ -378,7 +381,13 @@ function TripDate({
 }
 
 /** What the survey found, said without rounding it up to "todo correcto". */
-function headline({ fixes, examined, mixed, unverifiable }: Survey): string {
+function headline({
+  fixes,
+  examined,
+  mixed,
+  unverifiable,
+  undatable,
+}: Survey): string {
   const trips = examined === 1 ? "viaje" : "viajes";
 
   if (fixes.length > 0) {
@@ -388,10 +397,83 @@ function headline({ fixes, examined, mixed, unverifiable }: Survey): string {
   // Nothing to rewrite is not the same as nothing wrong: a trip nobody can
   // date, or one holding two journeys, is reported below, and saying
   // "todo correcto" over the top of it was simply untrue.
-  const stuck = mixed.length + unverifiable.length;
+  // `undatable` belongs in this count too. Leaving it out is what let a
+  // folder whose photos were never found report itself as "todo correcto".
+  const stuck = mixed.length + unverifiable.length + undatable;
   if (stuck > 0) {
     return `${examined} ${trips} revisados · ${stuck} que no puedo arreglar solo`;
   }
 
+  if (examined === 0) return `Ninguna carpeta de viaje en Drive`;
+
   return `${examined} ${examined === 1 ? "viaje revisado" : "viajes revisados"} · todo correcto`;
+}
+
+const SOURCE_NAMES: Record<string, string> = {
+  exif: "de la cámara",
+  name: "del nombre",
+  nearby: "de las vecinas",
+  manual: "puestas a mano",
+  file: "del fichero",
+  none: "sin fecha",
+};
+
+/**
+ * Every folder examined, with the dates it was judged on.
+ *
+ * Here because "todo correcto" is not a claim anyone can check from the
+ * outside. When the verdict is wrong — and it has been — this is what shows
+ * whether the photos were even found, and where each of their dates came from.
+ */
+function Detail({ checked }: { checked: Checked[] }) {
+  const [open, setOpen] = useState(false);
+
+  if (checked.length === 0) return null;
+
+  return (
+    <div className="mt-4 border-t border-teal/30 pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="t-label cursor-pointer text-ink-soft hover:text-accent hover:underline"
+      >
+        {open ? "Ocultar" : "Ver"} lo que ha leído de cada carpeta
+      </button>
+
+      {open && (
+        <ul className="mt-2 flex flex-col gap-3">
+          {checked.map((one) => (
+            <li key={one.folderId} className="text-[0.9rem]">
+              <p className="break-all font-mono text-sm">
+                {one.year}/{one.name}
+                <span className="ml-2 font-sans text-ink-soft">
+                  {one.verdict}
+                </span>
+              </p>
+              <p className="text-ink-soft tabular-nums">
+                dice: {one.stored.from.toLocaleDateString("es")} →{" "}
+                {one.stored.to.toLocaleDateString("es")}
+              </p>
+              <p className="text-ink-soft tabular-nums">
+                sus {one.photos} {one.photos === 1 ? "foto" : "fotos"} dicen:{" "}
+                {one.found
+                  ? `${one.found.from.toLocaleDateString("es")} → ${one.found.to.toLocaleDateString("es")}`
+                  : "ninguna fecha"}
+              </p>
+              <p className="text-ink-soft">
+                {Object.entries(one.sources).length === 0
+                  ? "no se ha encontrado ninguna foto dentro"
+                  : Object.entries(one.sources)
+                      .map(
+                        ([source, count]) =>
+                          `${count} ${SOURCE_NAMES[source] ?? source}`,
+                      )
+                      .join(" · ")}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }

@@ -307,6 +307,7 @@ test("a trip whose year folder no longer matches says so", () => {
 
 test("nothing in an empty archive", () => {
   assert.deepEqual(planFixes({ folders: [], media: [] }), {
+    checked: [],
     fixes: [],
     examined: 0,
     mixed: [],
@@ -455,4 +456,60 @@ test("nothing wrong reads as nothing wrong", () => {
   assert.deepEqual(survey.mixed, []);
   assert.deepEqual(survey.unverifiable, []);
   assert.equal(survey.undatable, 0);
+});
+
+test("every folder examined leaves a record of what it was judged on", () => {
+  // "Todo correcto" is unfalsifiable from the outside. When the verdict is
+  // wrong, this is what says whether the photos were even found.
+  const survey = planFixes(IRELAND);
+
+  assert.equal(survey.checked.length, 1);
+
+  const [one] = survey.checked;
+  assert.equal(one.verdict, "fixable");
+  assert.equal(one.photos, 3);
+  assert.equal(one.stored.to.getMonth(), 7, "August, as the folder claims");
+  assert.equal(one.found?.to.getMonth(), 10, "November, as its photos say");
+  assert.deepEqual(one.sources, { exif: 2, nearby: 1 });
+});
+
+test("a folder whose photos are nowhere to be found says so", () => {
+  // This reported itself as correct, because an empty folder agrees with
+  // everything. The record is what makes it visible.
+  const survey = planFixes({
+    folders: [
+      folder("y2025", "2025"),
+      folder("trip", "Noviembre", "y2025", {
+        from: at(2025, 11, 18),
+        to: at(2025, 11, 22),
+      }),
+    ],
+    media: [],
+  });
+
+  assert.equal(survey.checked.length, 1);
+  assert.equal(survey.checked[0].verdict, "empty");
+  assert.equal(survey.checked[0].photos, 0);
+  assert.deepEqual(survey.checked[0].sources, {});
+  assert.equal(survey.undatable, 1);
+});
+
+test("a correct folder is recorded as correct, not left out", () => {
+  const survey = planFixes({
+    folders: [
+      folder("y2025", "2025"),
+      folder("trip", "Noviembre", "y2025", {
+        from: at(2025, 11, 18),
+        to: at(2025, 11, 22),
+      }),
+    ],
+    media: [
+      photo("p1", "a.jpg", "trip", at(2025, 11, 18)),
+      photo("p2", "b.jpg", "trip", at(2025, 11, 22)),
+    ],
+  });
+
+  assert.deepEqual(survey.fixes, []);
+  assert.equal(survey.checked[0].verdict, "correct");
+  assert.deepEqual(survey.checked[0].sources, { exif: 2 });
 });

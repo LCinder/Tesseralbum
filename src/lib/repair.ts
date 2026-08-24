@@ -11,6 +11,7 @@ import {
   disambiguate,
   monthLabel,
   spanFromProperties,
+  spanOf,
   spanToProperties,
   trustedSpan,
   yearLabel,
@@ -69,7 +70,42 @@ export type Unverifiable = {
   siblings: string[];
 };
 
+/**
+ * What was read from one trip folder, and what was decided about it.
+ *
+ * Kept for every folder examined, including the ones judged correct. "Todo
+ * correcto" is not a claim anyone can check from the outside, and when it is
+ * wrong there is no way to find out why without seeing the dates it read.
+ */
+export type Checked = {
+  folderId: string;
+  name: string;
+  year: string;
+  photos: number;
+  /** The span the folder claims, from its own properties. */
+  stored: DateSpan;
+  /** The span its photos say, once read the way the album reads them. */
+  found: DateSpan | null;
+  /** How many photos took their date from each source. */
+  sources: Record<string, number>;
+  verdict: Verdict;
+};
+
+export type Verdict =
+  /** Its name and dates match its photos. */
+  | "correct"
+  /** Fixable on its own. */
+  | "fixable"
+  /** Two journeys in one folder; a rename cannot separate them. */
+  | "mixed"
+  /** Not one usable date anywhere inside. */
+  | "unverifiable"
+  /** No photos found in it at all. */
+  | "empty";
+
 export type Survey = {
+  /** Every trip folder looked at, with what was read from it. */
+  checked: Checked[];
   /** The folders to rewrite, each with the name it should end up with. */
   fixes: Fix[];
   /** Trip folders looked at. */
@@ -79,6 +115,15 @@ export type Survey = {
   /** Folders with no photos at all. */
   undatable: number;
 };
+
+/** How many photos ended up taking their date from each source. */
+function tallySources(dated: { dateSource: string }[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const shot of dated) {
+    counts[shot.dateSource] = (counts[shot.dateSource] ?? 0) + 1;
+  }
+  return counts;
+}
 
 /** Photos grouped by the folder they sit in, which is their trip. */
 function contentsOf(media: DriveFile[]): Map<string, DriveFile[]> {
@@ -130,6 +175,7 @@ export function planFixes({
   const contents = contentsOf(media);
   const taken = namesInUse(folders);
 
+  const checked: Checked[] = [];
   const fixes: Fix[] = [];
   const mixed: Mixed[] = [];
   const unverifiable: Unverifiable[] = [];
@@ -153,14 +199,28 @@ export function planFixes({
 
     const photos = contents.get(folder.id) ?? [];
 
-    if (photos.length === 0) {
-      undatable += 1;
-      continue;
-    }
-
     // The same reading the album does, neighbours and all, so a folder is
     // named after what a person will actually see inside it.
     const dated = withNeighbourDates(photos.map(toShot));
+
+    const report = (verdict: Verdict) => {
+      checked.push({
+        folderId: folder.id,
+        name: folder.name,
+        year,
+        photos: photos.length,
+        stored,
+        found: spanOf(dated.map((shot) => shot.takenAt)),
+        sources: tallySources(dated),
+        verdict,
+      });
+    };
+
+    if (photos.length === 0) {
+      undatable += 1;
+      report("empty");
+      continue;
+    }
 
     // Not one camera date, so there is no yardstick. Reporting this as correct
     // was the bug: the folder agreed with the photos because both had taken
@@ -173,6 +233,7 @@ export function planFixes({
         photoIds: photos.map((photo) => photo.id),
         siblings: [...siblings],
       });
+      report("unverifiable");
       continue;
     }
 
@@ -186,6 +247,7 @@ export function planFixes({
     // heavier and more destructive operation than this button promises.
     if (clusters.length > 1) {
       mixed.push({ name: folder.name, year, trips: clusters.length });
+      report("mixed");
       continue;
     }
 
@@ -196,7 +258,10 @@ export function planFixes({
       stored.from.getTime() === span.from.getTime() &&
       stored.to.getTime() === span.to.getTime();
 
-    if (sameSpan && wanted === folder.name) continue;
+    if (sameSpan && wanted === folder.name) {
+      report("correct");
+      continue;
+    }
 
     const rename =
       wanted === folder.name
@@ -223,9 +288,10 @@ export function planFixes({
         ? { wrongYear: { holding: year, wanted: wantedYear } }
         : {}),
     });
+    report("fixable");
   }
 
-  return { fixes, examined, mixed, unverifiable, undatable };
+  return { checked, fixes, examined, mixed, unverifiable, undatable };
 }
 
 /**
