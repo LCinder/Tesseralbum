@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { ChipWriter } from "@/components/ChipWriter";
 import { CopyButton } from "@/components/CopyButton";
 import { Gallery } from "@/components/Gallery";
 import { UploadPreview } from "@/components/UploadPreview";
 import { type Place } from "@/lib/catalog";
+import { placeUrl } from "@/lib/env";
 import { flagOf } from "@/lib/flags";
 
 /**
@@ -99,8 +101,12 @@ export function Album({
               /t/{place.slug}
             </code>
             <CopyButton
-              value={`${typeof window === "undefined" ? "" : window.location.origin}/t/${place.slug}`}
+              value={placeUrl(
+                place.slug,
+                typeof window === "undefined" ? "" : window.location.origin,
+              )}
             />
+            <ChipWriter slug={place.slug} />
           </span>
         </div>
       )}

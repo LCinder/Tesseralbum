@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ChipWriter } from "@/components/ChipWriter";
 import { CopyButton } from "@/components/CopyButton";
+import { placeUrl } from "@/lib/env";
 import { PlaceSearch } from "@/components/PlaceSearch";
 import { SectionLabel } from "@/components/Shell";
 import { useSession } from "@/components/SessionProvider";
@@ -222,7 +224,7 @@ function JustCreated({ place, isNew }: { place: Place; isNew: boolean }) {
   // Read at render rather than stored: the origin differs between localhost
   // and the deployment, and this only ever renders after a click.
   const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const url = `${origin}/t/${place.slug}`;
+  const url = placeUrl(place.slug, origin);
 
   return (
     <div className="mb-10 border-l-[3px] border-teal bg-teal-bg px-4 py-4">
@@ -242,6 +244,7 @@ function JustCreated({ place, isNew }: { place: Place; isNew: boolean }) {
             Ver álbum
           </Link>
           <CopyButton value={url} />
+          <ChipWriter slug={place.slug} />
         </span>
       </div>
 

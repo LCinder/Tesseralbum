@@ -61,6 +61,28 @@ De ahí que **un lugar tenga un solo chip**: volver a un sitio no necesita otra
 pegatina, porque lo que distingue las visitas son las fechas de las fotos. Dar
 de alta una ciudad que ya tienes te devuelve la URL que ya tenía.
 
+## Grabar el chip desde la web
+
+`Grabar chip`, junto a la URL de cada lugar. Acercas la pegatina al móvil y se
+escribe. Usa Web NFC (`NDEFReader`), así que **solo funciona en Chrome sobre
+Android**: en iPhone no existe y no va a existir, y ahí el botón explica que hay
+que copiar la URL y grabarla con una app tipo NFC Tools.
+
+Un chip lleva una URL absoluta **para siempre**, y por eso hace falta
+`NEXT_PUBLIC_SITE_URL`: sin ella la app no sabe qué grabar, y si la dirección
+actual no coincide con esa, **se niega a grabar**. Una pegatina escrita desde
+`npm run dev` llevaría `http://localhost:3000/t/…` y funcionaría en un solo
+ordenador — un fallo que descubrirías al acercarla meses después.
+
+Los errores de Web NFC llegan todos como `DOMException`, y el nombre es la única
+parte útil: cada uno apunta a un arreglo distinto (dar permiso, encender el NFC,
+no mover la pegatina). Se traducen uno por uno en vez de colapsarlos en "no se
+pudo grabar".
+
+Una URL como `https://tesseralbum.vercel.app/t/dublin` ocupa unos 50 bytes: entra
+de sobra en una NTAG213, que son las baratas (144 bytes). Si algún día la URL se
+alarga, el botón avisa antes de gastar una pegatina.
+
 ## De dónde sale la fecha de una foto
 
 Por orden de fiabilidad:
@@ -247,7 +269,7 @@ docs/
 
 ## Estado de verificación
 
-Comprobado automáticamente en cada cambio: **222 tests**, typecheck, lint y
+Comprobado automáticamente en cada cambio: **233 tests**, typecheck, lint y
 build.
 
 Comprobado a mano contra Google: consentimiento, creación de carpetas, escritura

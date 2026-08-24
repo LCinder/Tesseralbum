@@ -9,7 +9,8 @@ import { StoragePanel } from "@/components/StoragePanel";
 import { useSession } from "@/components/SessionProvider";
 import { SetupNeeded } from "@/components/SetupNeeded";
 import { sortedPlaces, type FolderOutcome, type Place } from "@/lib/catalog";
-import { isConfigured } from "@/lib/env";
+import { ChipWriter } from "@/components/ChipWriter";
+import { isConfigured, placeUrl } from "@/lib/env";
 
 /**
  * Managing stickers that already exist: their URLs, and deleting them.
@@ -110,7 +111,7 @@ function Row({
   const [problem, setProblem] = useState<string | null>(null);
 
   const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const url = `${origin}/t/${place.slug}`;
+  const url = placeUrl(place.slug, origin);
 
   async function doDelete() {
     setBusy(true);
@@ -150,6 +151,7 @@ function Row({
             Ver álbum
           </Link>
           <CopyButton value={url} />
+          <ChipWriter slug={place.slug} />
           {!confirming && (
             <button
               type="button"
