@@ -244,22 +244,21 @@ function Tile({ shot, onOpen }: { shot: Shot; onOpen: () => void }) {
         aria-label={`Abrir ${shot.name}`}
         className="block w-full cursor-pointer"
       >
-      {isDisplayable(shot) ? (
-        <DriveImage
-          fileId={shot.id}
-          thumbnailLink={shot.thumbnailLink}
-          thumbId={shot.thumbId}
-          alt={shot.name}
-          className="aspect-square w-full bg-surface-2 object-cover"
-        />
-      ) : (
-        <div className="flex aspect-square w-full items-center justify-center bg-surface-2 p-2">
-          <span className="t-label text-center text-ink-soft">
-            HEIC · no visible
-          </span>
-        </div>
-      )}
-
+        {isDisplayable(shot) ? (
+          <DriveImage
+            fileId={shot.id}
+            thumbnailLink={shot.thumbnailLink}
+            thumbId={shot.thumbId}
+            alt={shot.name}
+            className="aspect-square w-full bg-surface-2 object-cover"
+          />
+        ) : (
+          <div className="flex aspect-square w-full items-center justify-center bg-surface-2 p-2">
+            <span className="t-label text-center text-ink-soft">
+              HEIC · no visible
+            </span>
+          </div>
+        )}
       </button>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-1.5">

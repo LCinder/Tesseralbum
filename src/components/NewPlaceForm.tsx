@@ -36,9 +36,10 @@ export function NewPlaceForm() {
   const [byHand, setByHand] = useState(false);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ place: Place; isNew: boolean } | null>(
-    null,
-  );
+  const [created, setCreated] = useState<{
+    place: Place;
+    isNew: boolean;
+  } | null>(null);
 
   if (!catalog) return null;
 
@@ -96,7 +97,11 @@ export function NewPlaceForm() {
 
     setSaving(true);
     try {
-      const { catalog: next, place, created: isNew } = withPlace(catalog, {
+      const {
+        catalog: next,
+        place,
+        created: isNew,
+      } = withPlace(catalog, {
         city: resolved.city,
         country: resolved.country,
         countryCode: resolved.countryCode,
@@ -222,7 +227,9 @@ function JustCreated({ place, isNew }: { place: Place; isNew: boolean }) {
   return (
     <div className="mb-10 border-l-[3px] border-teal bg-teal-bg px-4 py-4">
       <p className="t-label mb-2 text-teal">
-        {isNew ? "Grábale esto al chip" : `${place.city} ya estaba dado de alta`}
+        {isNew
+          ? "Grábale esto al chip"
+          : `${place.city} ya estaba dado de alta`}
       </p>
 
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
@@ -270,7 +277,9 @@ function Field({
     <label className="flex flex-col gap-1">
       <span className="t-label text-ink-soft">
         {label}
-        {hint && <span className="ml-2 normal-case tracking-normal">{hint}</span>}
+        {hint && (
+          <span className="ml-2 normal-case tracking-normal">{hint}</span>
+        )}
       </span>
       {children}
     </label>

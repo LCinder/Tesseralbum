@@ -88,8 +88,8 @@ export function StoragePanel() {
 
           <p className="mt-1 text-[0.9rem] text-ink-soft">
             De eso, {formatBytes(quota.driveBytes)} son ficheros de Drive. El
-            resto lo ocupan Gmail y Google Photos, que comparten la misma
-            cuota — y la papelera sigue contando hasta que la vacías.
+            resto lo ocupan Gmail y Google Photos, que comparten la misma cuota
+            — y la papelera sigue contando hasta que la vacías.
           </p>
         </div>
       )}
@@ -97,9 +97,9 @@ export function StoragePanel() {
       <SectionLabel>Caché local</SectionLabel>
 
       <p className="mb-3 max-w-lg text-[0.95rem] text-ink-soft">
-        Las miniaturas que ya has visto se guardan en este navegador para que
-        el álbum abra al instante la próxima vez. Borrarlas no toca tu Drive:
-        se vuelven a descargar cuando hagan falta.
+        Las miniaturas que ya has visto se guardan en este navegador para que el
+        álbum abra al instante la próxima vez. Borrarlas no toca tu Drive: se
+        vuelven a descargar cuando hagan falta.
       </p>
 
       <div className="flex flex-wrap items-baseline gap-4">

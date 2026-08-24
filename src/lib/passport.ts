@@ -64,10 +64,7 @@ function startOfDay(date: Date): number {
   ).getTime();
 }
 
-export function buildPassport(
-  places: Place[],
-  trips: TripRecord[],
-): Passport {
+export function buildPassport(places: Place[], trips: TripRecord[]): Passport {
   const byId = new Map(places.map((place) => [place.id, place]));
   const countries = new Map<string, CountryEntry>();
   const years = new Map<string, { trips: number; photos: number }>();
@@ -161,13 +158,21 @@ function later(current: Date | null, candidate: Date): Date {
  * from both Dublín and Cork.
  */
 export function tripsFromListing(
-  folders: { id: string; name: string; appProperties?: Record<string, string>; parents?: string[] }[],
+  folders: {
+    id: string;
+    name: string;
+    appProperties?: Record<string, string>;
+    parents?: string[];
+  }[],
   media: { appProperties?: Record<string, string>; parents?: string[] }[],
 ): TripRecord[] {
   const byId = new Map(folders.map((folder) => [folder.id, folder]));
 
   // folderId + placeId, since one trip folder can serve two cities.
-  const counts = new Map<string, { folderId: string; placeId: string; photos: number }>();
+  const counts = new Map<
+    string,
+    { folderId: string; placeId: string; photos: number }
+  >();
 
   for (const file of media) {
     const folderId = file.parents?.[0];

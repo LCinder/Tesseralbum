@@ -23,8 +23,10 @@ const shot = (name: string, takenAt: Date | null): Shot => ({
   bytes: null,
 });
 
-const order = <T extends { name: string }>(items: T[], by: (a: T, b: T) => number) =>
-  [...items].sort(by).map((item) => item.name);
+const order = <T extends { name: string }>(
+  items: T[],
+  by: (a: T, b: T) => number,
+) => [...items].sort(by).map((item) => item.name);
 
 test("an album runs from the oldest trip to the newest", () => {
   const trips = [

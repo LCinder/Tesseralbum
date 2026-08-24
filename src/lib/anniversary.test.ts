@@ -21,10 +21,9 @@ function trip(from: Date | null, to?: Date): TripRecord {
 }
 
 test("a trip a year ago today is an anniversary", () => {
-  const found = anniversariesOn(
-    on(2026, 11, 20),
-    [trip(on(2025, 11, 18), on(2025, 11, 26))],
-  );
+  const found = anniversariesOn(on(2026, 11, 20), [
+    trip(on(2025, 11, 18), on(2025, 11, 26)),
+  ]);
 
   assert.equal(found.length, 1);
   assert.equal(found[0].yearsAgo, 1);
@@ -33,10 +32,9 @@ test("a trip a year ago today is an anniversary", () => {
 });
 
 test("a date outside the trip is not an anniversary", () => {
-  const found = anniversariesOn(
-    on(2026, 11, 30),
-    [trip(on(2025, 11, 18), on(2025, 11, 26))],
-  );
+  const found = anniversariesOn(on(2026, 11, 30), [
+    trip(on(2025, 11, 18), on(2025, 11, 26)),
+  ]);
 
   assert.deepEqual(found, []);
 });
@@ -49,10 +47,9 @@ test("the first and last days both count", () => {
 });
 
 test("this year's trip is not an anniversary of itself", () => {
-  const found = anniversariesOn(
-    on(2026, 4, 5),
-    [trip(on(2026, 4, 1), on(2026, 4, 9))],
-  );
+  const found = anniversariesOn(on(2026, 4, 5), [
+    trip(on(2026, 4, 1), on(2026, 4, 9)),
+  ]);
 
   assert.deepEqual(found, []);
 });

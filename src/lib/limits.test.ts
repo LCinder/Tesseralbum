@@ -62,7 +62,10 @@ test("the limits are boundaries, not approximations", () => {
   assert.notEqual(rejectionFor(media("video", MAX_VIDEO_BYTES + 1, 10)), null);
 
   assert.equal(rejectionFor(media("video", MB, MAX_VIDEO_SECONDS)), null);
-  assert.notEqual(rejectionFor(media("video", MB, MAX_VIDEO_SECONDS + 1)), null);
+  assert.notEqual(
+    rejectionFor(media("video", MB, MAX_VIDEO_SECONDS + 1)),
+    null,
+  );
 
   assert.equal(rejectionFor(media("photo", MAX_PHOTO_BYTES)), null);
   assert.notEqual(rejectionFor(media("photo", MAX_PHOTO_BYTES + 1)), null);

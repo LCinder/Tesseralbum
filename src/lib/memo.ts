@@ -25,10 +25,7 @@ const entries = new Map<string, Entry>();
  * whose components each ask for the same listing on mount would otherwise
  * fire the same query three times before any of them returned.
  */
-export async function memo<T>(
-  key: string,
-  load: () => Promise<T>,
-): Promise<T> {
+export async function memo<T>(key: string, load: () => Promise<T>): Promise<T> {
   const existing = entries.get(key);
 
   if (existing) {

@@ -49,7 +49,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl grow px-6 py-10">{children}</main>
+      <main className="mx-auto w-full max-w-3xl grow px-6 py-10">
+        {children}
+      </main>
 
       <footer className="mx-auto w-full max-w-3xl px-6 pb-10">
         <p className="t-label border-t border-rule pt-4 text-ink-soft">

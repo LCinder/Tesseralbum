@@ -57,7 +57,9 @@ test("a hash query batches many clauses into one request", () => {
   // a single byte moved. This is the shape those queries take.
   const hashes = ["aaa", "bbb", "ccc"];
   const clauses = hashes
-    .map((hash) => `appProperties has { key='sha256' and value=${quote(hash)} }`)
+    .map(
+      (hash) => `appProperties has { key='sha256' and value=${quote(hash)} }`,
+    )
     .join(" or ");
 
   const q = `(${clauses}) and trashed = false`;

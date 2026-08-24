@@ -128,7 +128,11 @@ test("a WhatsApp photo keeps its date in its name", () => {
   // The one case that matters most: EXIF stripped, mtime is the day it was
   // forwarded, and the real date is still sitting in the file name.
   const forwardedLastWeek = new Date(2026, 2, 14).getTime();
-  const result = pickDate(undefined, "IMG-20250929-WA0012.jpg", forwardedLastWeek);
+  const result = pickDate(
+    undefined,
+    "IMG-20250929-WA0012.jpg",
+    forwardedLastWeek,
+  );
 
   assert.equal(result.dateSource, "name");
   assert.equal(result.takenAt?.getFullYear(), 2025);

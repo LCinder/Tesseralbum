@@ -111,7 +111,8 @@ export function DriveImage({
         // Best effort: a failed write costs a re-download, not an error.
         void writeThumb(fileId, blob);
       } catch {
-        if (!controller.signal.aborted) setStage(after(stage, Boolean(thumbId)));
+        if (!controller.signal.aborted)
+          setStage(after(stage, Boolean(thumbId)));
       }
     })();
 

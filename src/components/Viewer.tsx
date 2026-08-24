@@ -89,9 +89,7 @@ export function Viewer({
       <div className="relative flex min-h-0 grow items-center justify-center bg-surface-2 p-2">
         <Content key={shot.id} shot={shot} />
 
-        {index > 0 && (
-          <Arrow side="left" onClick={() => onMove(index - 1)} />
-        )}
+        {index > 0 && <Arrow side="left" onClick={() => onMove(index - 1)} />}
         {index < shots.length - 1 && (
           <Arrow side="right" onClick={() => onMove(index + 1)} />
         )}

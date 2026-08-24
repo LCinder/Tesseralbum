@@ -162,7 +162,10 @@ export function PlaceSearch({
       {results.length > 0 && (
         <ul className="border border-rule bg-surface">
           {results.map((place) => (
-            <li key={place.key} className="border-b border-rule last:border-b-0">
+            <li
+              key={place.key}
+              className="border-b border-rule last:border-b-0"
+            >
               <button
                 type="button"
                 onClick={() => {

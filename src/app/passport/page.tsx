@@ -126,8 +126,8 @@ function Record() {
         <p className="mb-10 max-w-lg text-ink-soft">
           Desde {passport.firstVisit.toLocaleDateString("es")} hasta{" "}
           {passport.lastVisit.toLocaleDateString("es")}, con{" "}
-          {passport.photoCount}{" "}
-          {passport.photoCount === 1 ? "foto" : "fotos"} guardadas.
+          {passport.photoCount} {passport.photoCount === 1 ? "foto" : "fotos"}{" "}
+          guardadas.
         </p>
       )}
 

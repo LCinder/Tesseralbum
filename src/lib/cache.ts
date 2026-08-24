@@ -84,9 +84,7 @@ function transact<T>(
 
 /** A cached thumbnail, or `null` when there is none or it is stale. */
 export async function readThumb(fileId: string): Promise<Blob | null> {
-  const entry = await transact<Entry>("readonly", (store) =>
-    store.get(fileId),
-  );
+  const entry = await transact<Entry>("readonly", (store) => store.get(fileId));
 
   if (!entry) return null;
   if (Date.now() - entry.storedAt > MAX_AGE_MS) return null;

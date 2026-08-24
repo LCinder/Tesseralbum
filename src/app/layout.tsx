@@ -33,7 +33,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${archivo.variable} ${newsreader.variable} ${plexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <SessionProvider clientId={GOOGLE_CLIENT_ID}>{children}</SessionProvider>
+        <SessionProvider clientId={GOOGLE_CLIENT_ID}>
+          {children}
+        </SessionProvider>
       </body>
     </html>
   );

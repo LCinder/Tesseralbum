@@ -82,8 +82,18 @@ test("two cities in one country make one passport entry", () => {
   const passport = buildPassport(
     [KIOTO, OSAKA],
     [
-      trip(KIOTO.id, "2024", { from: on(2024, 11, 18), to: on(2024, 11, 26) }, 40),
-      trip(OSAKA.id, "2024", { from: on(2024, 11, 27), to: on(2024, 11, 30) }, 12),
+      trip(
+        KIOTO.id,
+        "2024",
+        { from: on(2024, 11, 18), to: on(2024, 11, 26) },
+        40,
+      ),
+      trip(
+        OSAKA.id,
+        "2024",
+        { from: on(2024, 11, 27), to: on(2024, 11, 30) },
+        12,
+      ),
     ],
   );
 
@@ -98,7 +108,12 @@ test("a country's first and last visit span all of its trips", () => {
   const passport = buildPassport(
     [KIOTO],
     [
-      trip(KIOTO.id, "2024", { from: on(2024, 11, 18), to: on(2024, 11, 26) }, 10),
+      trip(
+        KIOTO.id,
+        "2024",
+        { from: on(2024, 11, 18), to: on(2024, 11, 26) },
+        10,
+      ),
       trip(KIOTO.id, "2026", { from: on(2026, 4, 2), to: on(2026, 4, 9) }, 20),
     ],
   );
@@ -113,8 +128,18 @@ test("countries are ordered by how often they were visited", () => {
   const passport = buildPassport(
     [KIOTO, DUBLIN],
     [
-      trip(DUBLIN.id, "2025", { from: on(2025, 9, 29), to: on(2025, 10, 7) }, 5),
-      trip(KIOTO.id, "2024", { from: on(2024, 11, 18), to: on(2024, 11, 26) }, 5),
+      trip(
+        DUBLIN.id,
+        "2025",
+        { from: on(2025, 9, 29), to: on(2025, 10, 7) },
+        5,
+      ),
+      trip(
+        KIOTO.id,
+        "2024",
+        { from: on(2024, 11, 18), to: on(2024, 11, 26) },
+        5,
+      ),
       trip(KIOTO.id, "2026", { from: on(2026, 4, 2), to: on(2026, 4, 9) }, 5),
     ],
   );
@@ -127,8 +152,18 @@ test("days travelling sums every trip", () => {
   const passport = buildPassport(
     [KIOTO, DUBLIN],
     [
-      trip(KIOTO.id, "2024", { from: on(2024, 11, 18), to: on(2024, 11, 26) }, 0),
-      trip(DUBLIN.id, "2025", { from: on(2025, 9, 29), to: on(2025, 10, 7) }, 0),
+      trip(
+        KIOTO.id,
+        "2024",
+        { from: on(2024, 11, 18), to: on(2024, 11, 26) },
+        0,
+      ),
+      trip(
+        DUBLIN.id,
+        "2025",
+        { from: on(2025, 9, 29), to: on(2025, 10, 7) },
+        0,
+      ),
     ],
   );
 
@@ -150,7 +185,12 @@ test("a trip whose place left the catalogue is left out entirely", () => {
   const passport = buildPassport(
     [KIOTO],
     [
-      trip(KIOTO.id, "2024", { from: on(2024, 11, 18), to: on(2024, 11, 26) }, 10),
+      trip(
+        KIOTO.id,
+        "2024",
+        { from: on(2024, 11, 18), to: on(2024, 11, 26) },
+        10,
+      ),
       trip("borrado-hace-tiempo", "2023", null, 99),
     ],
   );
@@ -164,8 +204,18 @@ test("years come back newest first with their totals", () => {
   const passport = buildPassport(
     [KIOTO, DUBLIN],
     [
-      trip(KIOTO.id, "2024", { from: on(2024, 11, 18), to: on(2024, 11, 26) }, 10),
-      trip(DUBLIN.id, "2025", { from: on(2025, 9, 29), to: on(2025, 10, 7) }, 25),
+      trip(
+        KIOTO.id,
+        "2024",
+        { from: on(2024, 11, 18), to: on(2024, 11, 26) },
+        10,
+      ),
+      trip(
+        DUBLIN.id,
+        "2025",
+        { from: on(2025, 9, 29), to: on(2025, 10, 7) },
+        25,
+      ),
       trip(KIOTO.id, "2025", { from: on(2025, 2, 1), to: on(2025, 2, 5) }, 5),
     ],
   );
@@ -178,7 +228,10 @@ test("years come back newest first with their totals", () => {
 
 test("a place with no trips is not a visited city", () => {
   // A sticker registered but never used is a plan, not a journey.
-  const passport = buildPassport([KIOTO, DUBLIN], [trip(KIOTO.id, "2024", null, 3)]);
+  const passport = buildPassport(
+    [KIOTO, DUBLIN],
+    [trip(KIOTO.id, "2024", null, 3)],
+  );
 
   assert.equal(passport.cityCount, 1);
   assert.equal(passport.countries.length, 1);
@@ -234,7 +287,10 @@ test("one trip folder holding two cities becomes two records", () => {
     records.find((r) => r.placeId === "dublin-irlanda")?.photoCount,
     2,
   );
-  assert.equal(records.find((r) => r.placeId === "cork-irlanda")?.photoCount, 1);
+  assert.equal(
+    records.find((r) => r.placeId === "cork-irlanda")?.photoCount,
+    1,
+  );
 });
 
 test("files without a parent or a place are skipped", () => {

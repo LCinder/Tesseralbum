@@ -139,8 +139,6 @@ export async function search(
   if (!Array.isArray(body)) return [];
 
   return dedupe(
-    body
-      .map(normalize)
-      .filter((place): place is Found => place !== null),
+    body.map(normalize).filter((place): place is Found => place !== null),
   );
 }

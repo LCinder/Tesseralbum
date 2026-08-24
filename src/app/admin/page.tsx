@@ -160,10 +160,9 @@ function Row({
       {confirming && (
         <div className="mt-3 border-l-[3px] border-accent bg-accent-bg px-4 py-3">
           <p className="mb-3 text-[0.95rem]">
-            Se borra el lugar del catálogo. Si{" "}
-            <strong>{place.country}</strong> se queda sin ninguno
-            y su carpeta está vacía, la carpeta va a la papelera de Drive.{" "}
-            <strong>Si tiene fotos, no se toca.</strong>
+            Se borra el lugar del catálogo. Si <strong>{place.country}</strong>{" "}
+            se queda sin ninguno y su carpeta está vacía, la carpeta va a la
+            papelera de Drive. <strong>Si tiene fotos, no se toca.</strong>
           </p>
           <p className="mb-3 text-[0.9rem] text-ink-soft">
             El chip que lleve esta URL dejará de resolver. Puedes reaprovecharlo

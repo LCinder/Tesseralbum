@@ -86,7 +86,11 @@ test("nothing stored means nothing loaded", () => {
 });
 
 test("a catalogue snapshot survives a round trip", () => {
-  saveCatalogSnapshot({ rootId: "root123", fileId: "file456", catalog: CATALOG });
+  saveCatalogSnapshot({
+    rootId: "root123",
+    fileId: "file456",
+    catalog: CATALOG,
+  });
 
   const loaded = loadCatalog();
   assert.equal(loaded?.rootId, "root123");
@@ -130,7 +134,11 @@ test("a catalogue with the wrong shape is refused", () => {
   // Rendering half a catalogue would crash the page it was meant to speed up.
   for (const junk of [
     "{{{",
-    JSON.stringify({ rootId: "r", catalog: { places: "no" }, storedAt: Date.now() }),
+    JSON.stringify({
+      rootId: "r",
+      catalog: { places: "no" },
+      storedAt: Date.now(),
+    }),
     JSON.stringify({ rootId: "r", storedAt: Date.now() }),
     JSON.stringify({ catalog: CATALOG, storedAt: Date.now() }),
     JSON.stringify({ rootId: "r", catalog: CATALOG }),

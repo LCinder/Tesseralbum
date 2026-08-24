@@ -39,8 +39,8 @@ function Places() {
         {empty ? (
           <>
             Tu Drive está conectado y la carpeta{" "}
-            <code className="font-mono text-base">{ROOT_FOLDER}</code> ya existe.
-            Busca la ciudad de tu primer souvenir y dala de alta.
+            <code className="font-mono text-base">{ROOT_FOLDER}</code> ya
+            existe. Busca la ciudad de tu primer souvenir y dala de alta.
           </>
         ) : (
           "Las fotos se organizarán por sus propias fechas dentro de la carpeta del país."

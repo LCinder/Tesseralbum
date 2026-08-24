@@ -48,7 +48,20 @@ export function classify(mime: string, name: string): Kind | null {
 
   const extension = name.toLowerCase().split(".").pop() ?? "";
 
-  if (["jpg", "jpeg", "png", "webp", "gif", "avif", "heic", "heif", "tif", "tiff"].includes(extension)) {
+  if (
+    [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp",
+      "gif",
+      "avif",
+      "heic",
+      "heif",
+      "tif",
+      "tiff",
+    ].includes(extension)
+  ) {
     return "photo";
   }
   if (["mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp"].includes(extension)) {
@@ -69,7 +82,12 @@ export function classify(mime: string, name: string): Kind | null {
 export function undecodableWarning(mime: string, name: string): string | null {
   const extension = name.toLowerCase().split(".").pop() ?? "";
 
-  if (mime === "image/heic" || mime === "image/heif" || extension === "heic" || extension === "heif") {
+  if (
+    mime === "image/heic" ||
+    mime === "image/heif" ||
+    extension === "heic" ||
+    extension === "heif"
+  ) {
     return "HEIC: se sube bien, pero el navegador no puede mostrarla. En el iPhone: Ajustes › Cámara › Formatos › Más compatible.";
   }
   if (mime === "video/quicktime" && extension === "mov") {
@@ -105,7 +123,9 @@ export function dateFromName(name: string): Date | null {
   // Every match, not just the first: a name can carry a serial before the
   // date it actually wants to be sorted by, and giving up on the first thing
   // that fails validation would throw the real date away.
-  for (const found of patterns.flatMap((pattern) => [...name.matchAll(pattern)])) {
+  for (const found of patterns.flatMap((pattern) => [
+    ...name.matchAll(pattern),
+  ])) {
     const [, year, month, day, hour, minute, second] = found.map(Number);
 
     const at = new Date(
@@ -126,7 +146,8 @@ export function dateFromName(name: string): Date | null {
 
     // Digital photography, and nothing dated after tomorrow. A camera with a
     // flat clock writes 1980, and that is not a date worth sorting by.
-    const plausible = year >= 1990 && at.getTime() < Date.now() + 24 * 60 * 60 * 1000;
+    const plausible =
+      year >= 1990 && at.getTime() < Date.now() + 24 * 60 * 60 * 1000;
 
     if (real && plausible) return at;
   }
@@ -241,7 +262,10 @@ function readDuration(file: File): Promise<number | null> {
 async function sha256(file: File): Promise<string | null> {
   if (file.size > MAX_HASH_BYTES) return null;
 
-  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    await file.arrayBuffer(),
+  );
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
