@@ -61,6 +61,26 @@ De ahí que **un lugar tenga un solo chip**: volver a un sitio no necesita otra
 pegatina, porque lo que distingue las visitas son las fechas de las fotos. Dar
 de alta una ciudad que ya tienes te devuelve la URL que ya tenía.
 
+## Recalcular fechas
+
+Cada carpeta de viaje lleva en sus propias `appProperties` el rango que cubre, y
+de ahí sale su nombre. Las que se subieron antes de que la app distinguiera la
+fecha de la cámara de la del sistema pueden llevar un rango imposible:
+`File.lastModified` se pone a *hoy* al copiar un fichero, así que un viaje de
+noviembre acabó llamándose `Noviembre-Agosto`.
+
+`/admin` → **Revisar fechas** lo recalcula a partir de las fotos que cada carpeta
+tiene dentro, con el mismo agrupamiento que usa la subida. Primero enseña lo que
+cambiaría y solo escribe si lo confirmas. Cuesta la lista que el pasaporte ya
+cachea, más un `PATCH` por carpeta que esté mal; una carpeta correcta no se toca.
+
+Lo que no hace, y lo dice en el propio plan:
+
+- **Partir una carpeta con dos viajes dentro.** Renombrarla no los separa, y
+  separarlos es mover ficheros.
+- **Mover una carpeta de año.** Si las fechas buenas caen en otro año le arregla
+  el nombre, pero moverla hay que hacerlo desde Drive.
+
 ## Qué hay
 
 | Ruta | Qué hace |
@@ -70,7 +90,7 @@ de alta una ciudad que ya tienes te devuelve la URL que ya tenía.
 | `/place/[id]` | El álbum: viajes, fotos, diario y subida |
 | `/map` | Mapa de lugares, con vista previa al pulsar |
 | `/passport` | Países, ciudades, viajes, días fuera y gráfico por año |
-| `/admin` | URLs de los lugares, borrado, cuota y caché |
+| `/admin` | URLs de los lugares, borrado, recálculo de fechas, cuota y caché |
 
 ## Puesta en marcha
 
@@ -146,7 +166,7 @@ src/
     place/[id]/page.tsx      el álbum de un lugar
     map/page.tsx             mapa de lugares
     passport/page.tsx        estadísticas de viaje
-    admin/page.tsx           lugares, cuota y caché
+    admin/page.tsx           lugares, fechas, cuota y caché
   components/
     SessionProvider.tsx      token, catálogo y persistencia de sesión
     UploadPreview.tsx        elegir, revisar y subir

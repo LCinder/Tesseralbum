@@ -70,6 +70,19 @@ function dateOf(
   return { takenAt: usable, dateSource: usable ? source : "none" };
 }
 
+/**
+ * The same reading, for a file on its own.
+ *
+ * Used by the date repair, which works folder by folder across the whole
+ * archive and has no album to build.
+ */
+export function shotDate(file: DriveFile): {
+  takenAt: Date | null;
+  dateSource: Provenance;
+} {
+  return dateOf(file, file.appProperties ?? {});
+}
+
 function toShot(file: DriveFile): Shot {
   const properties = file.appProperties ?? {};
 

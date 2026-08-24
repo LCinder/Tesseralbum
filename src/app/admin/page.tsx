@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
+import { DateRepair } from "@/components/DateRepair";
 import { SectionLabel, SessionGate, Shell } from "@/components/Shell";
 import { StoragePanel } from "@/components/StoragePanel";
 import { useSession } from "@/components/SessionProvider";
@@ -84,6 +85,10 @@ function Registry() {
           <Row key={place.id} place={place} onDeleted={setNote} />
         ))}
       </ul>
+
+      <div className="mt-12">
+        <DateRepair />
+      </div>
 
       <div className="mt-12">
         <StoragePanel />
